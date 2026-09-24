@@ -1,0 +1,57 @@
+{
+  "name": "ecocode-profiler",
+  "displayName": "EcoCode Profiler",
+  "description": "A Hybrid Real-Time Energy Consumption and Carbon Estimation Extension for Python",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "ecocode-profiler.profileCurrentFile",
+        "title": "EcoCode: Profile Current Python File"
+      }
+    ],
+    "configuration": {
+      "title": "EcoCode Profiler",
+      "properties": {
+        "ecocode.carbonIntensityFactor": {
+          "type": "number",
+          "default": 310,
+          "description": "Static regional grid carbon-intensity factor (gCO2e/kWh). Default is Sri Lanka (310)."
+        },
+        "ecocode.samplingInterval": {
+          "type": "number",
+          "default": 100,
+          "description": "Sampling interval in milliseconds."
+        },
+        "ecocode.energyUnits": {
+          "type": "string",
+          "enum": [
+            "J",
+            "mJ",
+            "kWh"
+          ],
+          "default": "J",
+          "description": "Units to display for energy consumption."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.80.0",
+    "@types/node": "16.x",
+    "typescript": "^5.1.3"
+  }
+}
