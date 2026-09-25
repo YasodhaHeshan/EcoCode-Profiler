@@ -125,7 +125,12 @@ def main():
     profiler = EcoProfiler(target_script, args.carbon)
     
     sys.setprofile(profiler.profile_hook)
-    
+
+    # Redirect the target script's stdout to stderr so it doesn't
+    # corrupt the JSON output that the VS Code extension reads from stdout.
+    original_stdout = sys.stdout
+    sys.stdout = sys.stderr
+
     try:
         # Execute the target script
         with open(target_script, 'r') as f:
@@ -135,6 +140,8 @@ def main():
         print(f"Error executing script: {e}", file=sys.stderr)
     finally:
         sys.setprofile(None)
+        # Restore stdout and write the JSON report
+        sys.stdout = original_stdout
         report = profiler.generate_report()
         # Print JSON report to stdout so the VS Code extension can read it
         print(json.dumps(report, indent=2))
