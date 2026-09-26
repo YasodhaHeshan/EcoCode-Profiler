@@ -6,6 +6,7 @@ import platform
 import psutil
 import os
 import re
+import glob
 
 # --- Configuration & Hardware Constants ---
 # Using a static calibration coefficient from the Pereira et al. dataset.
@@ -52,7 +53,9 @@ class EcoProfiler:
         
         # Decide measurement backend based on platform
         self.is_linux = platform.system() == "Linux"
-        self.hardware_measurement_available = self.check_rapl_available()
+        self.rapl_start_counters = self.read_rapl_counters()
+        self.hardware_measurement_available = bool(self.rapl_start_counters)
+        self.rapl_measurement = None
         
         self.start_time = time.time()
 
@@ -96,11 +99,84 @@ class EcoProfiler:
             return baseline, "benchmark", self.benchmark
         return None
 
-    def check_rapl_available(self):
-        """FR-01: Detect if hardware RAPL is available (Linux powercap)"""
-        if self.is_linux:
-            return os.path.exists("/sys/class/powercap/intel-rapl")
-        return False
+    def read_rapl_counters(self):
+        """Read package energy counters exposed by Linux powercap/RAPL."""
+        if not self.is_linux:
+            return {}
+
+        base = "/sys/class/powercap/intel-rapl"
+        candidates = glob.glob(os.path.join(base, "intel-rapl:*"))
+        candidates.extend(glob.glob(base + ":*"))
+        candidates = list(dict.fromkeys(candidates))
+        if not any(os.path.isfile(os.path.join(directory, "energy_uj")) for directory in candidates):
+            candidates = [base]
+        counters = {}
+        seen = set()
+
+        for directory in candidates:
+            real_directory = os.path.realpath(directory)
+            if real_directory in seen or not os.path.isfile(os.path.join(directory, "energy_uj")):
+                continue
+            seen.add(real_directory)
+
+            name_path = os.path.join(directory, "name")
+            try:
+                with open(name_path, "r", encoding="utf-8", errors="replace") as name_file:
+                    domain_name = name_file.read().strip()
+            except OSError:
+                domain_name = ""
+
+            leaf = os.path.basename(os.path.normpath(directory))
+            # Keep package counters only. Summing core/DRAM subdomains with the
+            # package counter would double-count energy.
+            if domain_name:
+                if "package" not in domain_name.lower():
+                    continue
+            elif leaf != "intel-rapl":
+                # A numbered top-level zone is a package; deeper zones include
+                # another colon and are intentionally excluded.
+                if not re.fullmatch(r"intel-rapl:\d+", leaf):
+                    continue
+
+            try:
+                with open(os.path.join(directory, "energy_uj"), "r", encoding="ascii") as energy_file:
+                    energy_uj = int(energy_file.read().strip())
+                with open(os.path.join(directory, "max_energy_range_uj"), "r", encoding="ascii") as range_file:
+                    max_range_uj = int(range_file.read().strip())
+            except (OSError, ValueError):
+                continue
+            if energy_uj < 0 or max_range_uj <= 0 or energy_uj >= max_range_uj:
+                continue
+
+            key = domain_name or leaf
+            if key in counters:
+                key = f"{key}@{leaf}"
+            counters[key] = {"energy_uj": energy_uj, "max_range_uj": max_range_uj}
+        return counters
+
+    def calculate_rapl_energy(self):
+        """Return measured package joules, correcting one counter wrap per domain."""
+        end_counters = self.read_rapl_counters()
+        if not self.rapl_start_counters or not end_counters:
+            return None
+
+        domain_energy_j = {}
+        for domain, start in self.rapl_start_counters.items():
+            end = end_counters.get(domain)
+            if end is None:
+                continue
+            # max_energy_range_uj is the counter modulus. This handles a wrap
+            # between the two snapshots (including the usual 32-bit counter).
+            modulus = start["max_range_uj"]
+            start_value = start["energy_uj"]
+            end_value = end["energy_uj"]
+            delta_uj = end_value - start_value if end_value >= start_value else (modulus - start_value) + end_value
+            if delta_uj >= 0:
+                domain_energy_j[domain] = delta_uj / 1_000_000.0
+
+        if not domain_energy_j:
+            return None
+        return sum(domain_energy_j.values()), domain_energy_j
 
     def profile_hook(self, frame, event, arg):
         """FR-04: Instrument Python file using sys.setprofile."""
@@ -171,10 +247,20 @@ class EcoProfiler:
         if cpu_percent == 0.0:
             cpu_percent = 0.1 
 
-        # Scale the matched measured median power to this run's observed duration.
-        # If no benchmark match exists, retain the original utilization/TDP estimate.
+        # Prefer a direct package-energy measurement. Use a trained Intel
+        # baseline next, then the original utilization/TDP software estimate.
+        rapl_result = self.calculate_rapl_energy()
         match = self.find_energy_baseline()
-        if match:
+        if rapl_result:
+            total_estimated_energy, domain_energy_j = rapl_result
+            self.rapl_measurement = {"domains_energy_j": domain_energy_j}
+            self.energy_estimation = {
+                "method": "rapl_measurement",
+                "measurement_domain": "package",
+                "wraparound_correction": "max_energy_range_uj modulus",
+                "rapl_domains": list(domain_energy_j),
+            }
+        elif match:
             baseline, match_level, match_key = match
             total_estimated_energy = baseline["median_average_power_w"] * total_time
             self.energy_estimation = {
@@ -212,11 +298,13 @@ class EcoProfiler:
         
         report = {
             "metadata": {
-                "hardware_measured": self.hardware_measurement_available,
+                "hardware_measured": self.energy_estimation.get("method") == "rapl_measurement",
+                "hardware_measurement_available": self.hardware_measurement_available,
                 "carbon_intensity_factor": self.carbon_intensity,
                 "total_run_time_s": time.time() - self.start_time,
                 "total_estimated_energy_j": self.total_estimated_energy_j,
                 "energy_estimation": self.energy_estimation,
+                "rapl_measurement": self.rapl_measurement,
                 "benchmark": self.benchmark,
                 "input_size": self.input_size,
                 "cpu_model": self.cpu_model,

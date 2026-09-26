@@ -60,8 +60,8 @@ This document tracks the progress of the EcoCode Profiler research project based
 - [x] **FR-14 (Line-level Heatmap):** Added per-line timing to profiler output and color-coded line decorations for source lines attributed to the most energy-consuming function.
 
 ### 2. Hardware Measurement (Backend A)
-- [ ] **FR-02 (Direct RAPL Reading):** Expand `profiler.py` to read `/sys/class/powercap/intel-rapl` energy counters on Linux.
-- [ ] **FR-06 (Wrap-around Correction):** Add logic to handle 32-bit RAPL counter overflow.
+- [x] **FR-02 (Direct RAPL Reading):** Read Linux powercap/RAPL package energy counters at profiler start and end; use measured package energy ahead of model and TDP estimates when available.
+- [x] **FR-06 (Wrap-around Correction):** Correct a counter wrap between snapshots using each domain's `max_energy_range_uj` modulus, including the typical 32-bit counter range.
 - [ ] Update the VS Code extension runner to expose benchmark, input-size, and CPU-model options when invoking the profiler. At present, the extension uses profiler defaults (benchmark from script filename, detected CPU, and no input-size key).
 
 ### 3. Evaluation & Validation
