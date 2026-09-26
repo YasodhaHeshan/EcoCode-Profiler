@@ -5,10 +5,10 @@ import * as path from 'path';
 const STORAGE_KEY = 'ecocode.profileReports.v1';
 const SUMMARY_VIEW_ID = 'ecocode.summary';
 const HEAT_COLORS = [
-    'rgba(255, 235, 59, 0.10)',
-    'rgba(255, 193, 7, 0.17)',
-    'rgba(255, 152, 0, 0.24)',
-    'rgba(244, 67, 54, 0.32)',
+    'rgba(255, 235, 59, 0.20)',
+    'rgba(255, 193, 7, 0.34)',
+    'rgba(255, 152, 0, 0.48)',
+    'rgba(244, 67, 54, 0.64)',
 ];
 
 interface ProfileReport {
@@ -49,7 +49,12 @@ class SummaryProvider implements vscode.TreeDataProvider<SummaryNode> {
 
     getTreeItem(node: SummaryNode): vscode.TreeItem {
         if (node.kind === 'function') {
-            const item = new vscode.TreeItem(node.name, vscode.TreeItemCollapsibleState.Collapsed);
+            const topFunction = Object.entries(this.current?.report.functions || {})
+                .filter(([name, stats]) => !name.startsWith('<') && Object.keys(stats.line_time_s || {}).length > 0)
+                .sort((a, b) => Number(b[1].total_energy_j || 0) - Number(a[1].total_energy_j || 0))[0];
+            const hasLineTimings = Object.keys(node.stats.line_time_s || {}).length > 0;
+            const label = topFunction?.[0] === node.name && hasLineTimings ? `${node.name} (heatmap)` : node.name;
+            const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
             item.description = `${Number(node.stats.total_energy_j || 0).toFixed(4)} J`;
             item.tooltip = `${node.name}: ${Number(node.stats.total_time_s || 0).toFixed(6)} s, ${Number(node.stats.carbon_gco2e || 0).toFixed(8)} gCO₂e`;
             item.contextValue = 'ecocodeFunction';
@@ -268,7 +273,9 @@ function renderDecorations(editor: vscode.TextEditor, stored: StoredReport): voi
     }
 
     // Heatmap the source lines attributed to the most energy-consuming function.
-    const mostExpensive = functionEntries.sort((a, b) => Number(b[1].total_energy_j || 0) - Number(a[1].total_energy_j || 0))[0];
+    const mostExpensive = functionEntries
+        .filter(([name, stats]) => !name.startsWith('<') && Object.keys(stats.line_time_s || {}).length > 0)
+        .sort((a, b) => Number(b[1].total_energy_j || 0) - Number(a[1].total_energy_j || 0))[0];
     if (mostExpensive) {
         const [name, stats] = mostExpensive;
         const lineTimes = stats.line_time_s || {};
