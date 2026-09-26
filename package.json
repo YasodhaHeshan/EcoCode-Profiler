@@ -55,6 +55,23 @@
           ],
           "default": "J",
           "description": "Units to display for energy consumption."
+        },
+        "ecocode.suggestionModel.endpoint": {
+          "type": "string",
+          "default": "",
+          "description": "Optional OpenAI-compatible code-model endpoint. Example for Ollama: http://localhost:11434/v1/chat/completions. When empty, EcoCode uses its offline classifier."
+        },
+        "ecocode.suggestionModel.name": {
+          "type": "string",
+          "default": "qwen2.5-coder:7b",
+          "description": "Model name supplied to the configured code-model endpoint."
+        },
+        "ecocode.suggestionModel.timeoutSeconds": {
+          "type": "number",
+          "default": 180,
+          "minimum": 15,
+          "maximum": 600,
+          "description": "Maximum time to wait for a local or self-hosted code model response. Larger local models may need longer on CPU."
         }
       }
     }

@@ -1,0 +1,90 @@
+{"label":"manual_list_build","code":"result = []\nfor item in values:\n    result.append(item * item)"}
+{"label":"manual_list_build","code":"names = []\nfor user in users:\n    names.append(user.name)"}
+{"label":"manual_list_build","code":"rows = []\nfor record in records:\n    rows.append(format_row(record))"}
+{"label":"manual_sum_loop","code":"total = 0\nfor value in values:\n    total += value"}
+{"label":"manual_sum_loop","code":"score = 0\nfor item in items:\n    score += item.cost"}
+{"label":"manual_sum_loop","code":"count = 0\nfor row in rows:\n    count += len(row)"}
+{"label":"string_concat_loop","code":"text = ''\nfor word in words:\n    text += word"}
+{"label":"string_concat_loop","code":"html = ''\nfor row in rows:\n    html += render(row)"}
+{"label":"string_concat_loop","code":"output = ''\nfor value in values:\n    output += str(value)"}
+{"label":"range_len_iteration","code":"for index in range(len(items)):\n    print(items[index])"}
+{"label":"range_len_iteration","code":"for i in range(len(records)):\n    process(records[i])"}
+{"label":"range_len_iteration","code":"for position in range(len(data)):\n    consume(data[position])"}
+{"label":"list_membership_test","code":"if status in ['new', 'open', 'pending']:\n    handle(status)"}
+{"label":"list_membership_test","code":"if value not in [1, 2, 3, 4]:\n    reject(value)"}
+{"label":"list_membership_test","code":"return token in ['yes', 'true', '1']"}
+{"label":"list_instead_of_generator","code":"total = sum([value * value for value in values])"}
+{"label":"list_instead_of_generator","code":"if any([user.active for user in users]):\n    notify()"}
+{"label":"list_instead_of_generator","code":"largest = max([row.score for row in rows])"}
+{"label":"no_suggestion","code":"for item in values:\n    send(item)"}
+{"label":"no_suggestion","code":"result = sorted(values)"}
+{"label":"no_suggestion","code":"if value in allowed_values:\n    return value"}
+{"label":"no_suggestion","code":"for row in rows:\n    database.save(row)"}
+{"label": "cached_len_missing", "code": "index = 0\nwhile index < len(queue):\n    handle(queue[index])\n    index += 1"}
+{"label": "cached_len_missing", "code": "n = 0\nwhile n < len(tasks):\n    run(tasks[n])\n    n += 1"}
+{"label": "cached_len_missing", "code": "i = 0\nwhile i < len(buffer):\n    consume(buffer[i])\n    i += 1"}
+{"label": "attribute_lookup_in_loop", "code": "for record in records:\n    self.logger.debug(record)"}
+{"label": "attribute_lookup_in_loop", "code": "for row in rows:\n    config.settings.get('threshold')"}
+{"label": "attribute_lookup_in_loop", "code": "for item in items:\n    obj.helper.process(item)"}
+{"label": "old_style_string_formatting", "code": "message = 'Hello, %s! You have %d items.' % (name, count)"}
+{"label": "old_style_string_formatting", "code": "line = 'Name: ' + name + ', Age: ' + str(age)"}
+{"label": "old_style_string_formatting", "code": "label = '{} - {}'.format(title, subtitle)"}
+{"label": "nested_loop_membership_check", "code": "matches = []\nfor item in big_list:\n    if item in other_list:\n        matches.append(item)"}
+{"label": "nested_loop_membership_check", "code": "for user in users:\n    if user.id in blocked_ids:\n        skip(user)"}
+{"label": "nested_loop_membership_check", "code": "valid = [x for x in candidates if x in reference_list]"}
+{"label": "regex_compiled_in_loop", "code": "for line in lines:\n    if re.match(r'^\\d+$', line):\n        process(line)"}
+{"label": "regex_compiled_in_loop", "code": "for text in texts:\n    match = re.search(r'[A-Z]+', text)"}
+{"label": "regex_compiled_in_loop", "code": "results = [re.sub(r'\\s+', ' ', line) for line in lines]"}
+{"label": "full_file_read_into_memory", "code": "data = open('large_log.txt').read()\nfor line in data.split('\\n'):\n    process(line)"}
+{"label": "full_file_read_into_memory", "code": "lines = open(path).readlines()\nfor line in lines:\n    handle(line)"}
+{"label": "full_file_read_into_memory", "code": "content = file.read()\nfor row in content.splitlines():\n    parse(row)"}
+{"label": "loop_invariant_recomputation", "code": "for item in items:\n    threshold = config['limits']['max'] * 0.9\n    if item.value > threshold:\n        flag(item)"}
+{"label": "loop_invariant_recomputation", "code": "for row in rows:\n    factor = compute_scaling_factor(settings)\n    row.value *= factor"}
+{"label": "loop_invariant_recomputation", "code": "for x in values:\n    base = expensive_base_calculation()\n    result = base + x"}
+{"label": "pandas_iterrows_loop", "code": "for index, row in df.iterrows():\n    df.at[index, 'total'] = row['price'] * row['qty']"}
+{"label": "pandas_iterrows_loop", "code": "for _, row in df.iterrows():\n    results.append(row['a'] + row['b'])"}
+{"label": "pandas_iterrows_loop", "code": "for i, row in dataframe.iterrows():\n    if row['status'] == 'active':\n        active_rows.append(row)"}
+{"label": "numpy_python_loop", "code": "output = []\nfor x in arr:\n    output.append(x * 2)"}
+{"label": "numpy_python_loop", "code": "total = 0\nfor value in numpy_array:\n    total += value ** 2"}
+{"label": "numpy_python_loop", "code": "for i in range(len(vector)):\n    vector[i] = vector[i] + 1"}
+{"label": "manual_list_copy_loop", "code": "new_list = []\nfor item in old_list:\n    new_list.append(item)"}
+{"label": "manual_list_copy_loop", "code": "copy_of_data = []\nfor value in data:\n    copy_of_data.append(value)"}
+{"label": "manual_list_copy_loop", "code": "backup = []\nfor row in table:\n    backup.append(row)"}
+{"label": "sorted_for_min_max", "code": "smallest = sorted(values)[0]"}
+{"label": "sorted_for_min_max", "code": "largest = sorted(scores, reverse=True)[0]"}
+{"label": "sorted_for_min_max", "code": "oldest = sorted(records, key=lambda r: r.date)[0]"}
+{"label": "dict_build_loop", "code": "result = {}\nfor key, value in pairs:\n    result[key] = value * 2"}
+{"label": "dict_build_loop", "code": "lookup = {}\nfor user in users:\n    lookup[user.id] = user.name"}
+{"label": "dict_build_loop", "code": "mapping = {}\nfor row in rows:\n    mapping[row.key] = transform(row)"}
+{"label": "repeated_file_open_in_loop", "code": "for name in filenames:\n    f = open(name)\n    data = f.read()\n    f.close()"}
+{"label": "repeated_file_open_in_loop", "code": "for record in records:\n    with open('log.txt', 'a') as log:\n        log.write(str(record))"}
+{"label": "repeated_file_open_in_loop", "code": "for path in paths:\n    handle = open(path)\n    process(handle.read())"}
+{"label": "busy_wait_polling", "code": "while not task.is_done():\n    pass"}
+{"label": "busy_wait_polling", "code": "while queue.empty():\n    continue"}
+{"label": "busy_wait_polling", "code": "while not flag_ready:\n    time.sleep(0)"}
+{"label": "unnecessary_deepcopy", "code": "new_config = copy.deepcopy(config)\nnew_config['name'] = 'updated'"}
+{"label": "unnecessary_deepcopy", "code": "backup = copy.deepcopy(simple_list)"}
+{"label": "unnecessary_deepcopy", "code": "state_copy = copy.deepcopy(flat_dict)"}
+{"label": "repeated_json_dumps_loop", "code": "for record in records:\n    send(json.dumps(record))"}
+{"label": "repeated_json_dumps_loop", "code": "for item in items:\n    log(json.dumps(item))"}
+{"label": "repeated_json_dumps_loop", "code": "for x in data:\n    payload = json.dumps(x)\n    socket.send(payload)"}
+{"label": "list_concat_plus_loop", "code": "result = []\nfor item in values:\n    result = result + [item]"}
+{"label": "list_concat_plus_loop", "code": "combined = []\nfor chunk in chunks:\n    combined = combined + chunk"}
+{"label": "list_concat_plus_loop", "code": "output = []\nfor row in rows:\n    output = output + [transform(row)]"}
+{"label": "unnecessary_list_materialization", "code": "for i in list(range(1000000)):\n    process(i)"}
+{"label": "unnecessary_list_materialization", "code": "for value in list(map(str, values)):\n    print(value)"}
+{"label": "unnecessary_list_materialization", "code": "for item in list(filter(is_valid, items)):\n    handle(item)"}
+{"label": "redundant_type_cast", "code": "cleaned = list(list(raw_items))"}
+{"label": "redundant_type_cast", "code": "text = str(str(value))"}
+{"label": "redundant_type_cast", "code": "numbers = tuple(tuple(values))"}
+{"label": "double_lookup_check_then_delete", "code": "if item in inventory:\n    inventory.remove(item)"}
+{"label": "double_lookup_check_then_delete", "code": "if key in cache:\n    del cache[key]"}
+{"label": "double_lookup_check_then_delete", "code": "if user in active_users:\n    active_users.discard(user)"}
+{"label": "no_suggestion", "code": "total = sum(value * value for value in values)"}
+{"label": "no_suggestion", "code": "message = f'Hello, {name}! You have {count} items.'"}
+{"label": "no_suggestion", "code": "if status in {'new', 'open', 'pending'}:\n    handle(status)"}
+{"label": "no_suggestion", "code": "with open('log.txt', 'a') as log:\n    log.write(str(record))"}
+{"label": "no_suggestion", "code": "smallest = min(values)"}
+{"label": "no_suggestion", "code": "lookup = {user.id: user.name for user in users}"}
+{"label": "no_suggestion", "code": "output = np.array(values) * 2"}
+{"label": "no_suggestion", "code": "for line in open('large_log.txt'):\n    process(line)"}

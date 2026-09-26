@@ -11,7 +11,7 @@ EcoCode Profiler is a Visual Studio Code extension for measuring and estimating 
 - **Line heatmap:** Colors source lines attributed to the highest-energy defined function. Run profiling again after changing the target code to refresh the heatmap.
 - **Persistent reports:** Saves the latest profile and suggestions per file in VS Code workspace state, restoring annotations and diagnostics when the workspace is reopened.
 - **JSON export:** The **EcoCode: Export Profiling Report** command saves the profiler report and suggestions together.
-- **Static energy suggestions:** An AST-based analyzer detects common Python patterns such as manual list building, repeated string concatenation, inefficient membership checks, and nested loops. Suggestions appear in the editor and Problems panel.
+- **General code-model suggestions:** Configure an OpenAI-compatible local or self-hosted code model to review any Python source for algorithmic, I/O, memory, data-structure, and idiomatic improvements. The built-in classifier is an offline fallback for six high-confidence patterns; neither mode edits source automatically.
 - **Configurable carbon intensity:** Converts estimated energy to carbon equivalent using a configurable grid intensity (default: 310 gCO₂e/kWh).
 
 ## How the estimate is selected
@@ -51,6 +51,15 @@ node backend/train_intel_energy_model.js
 ```
 
 The script validates required columns and measurements, then writes `backend/training_data/intel_energy_model.json`.
+
+To retrain the code-suggestion classifier after adding labelled `{label, code}` rows to `backend/training_data/code_suggestion_examples.jsonl`, run:
+
+```bash
+node backend/train_suggestion_model.js
+```
+
+For broad, whole-file suggestions, configure `ecocode.suggestionModel.endpoint` to an OpenAI-compatible endpoint (for example Ollama's `http://localhost:11434/v1/chat/completions`) and set `ecocode.suggestionModel.name` to an installed coding model such as `qwen2.5-coder:7b`.
+The default model timeout is 180 seconds; set `ecocode.suggestionModel.timeoutSeconds` (15–600) higher on CPU-only machines.
 
 ## Run the profiler directly
 

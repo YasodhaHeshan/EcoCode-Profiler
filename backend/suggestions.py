@@ -1,286 +1,231 @@
-"""
-EcoCode Profiler — Energy Anti-Pattern Suggestion Engine
-Performs static AST analysis on a Python file and detects common
-energy anti-patterns, returning actionable refactoring suggestions.
-"""
-
-import ast
-import sys
-import json
+"""Learned local energy-refactoring suggestions for Python source code."""
 import argparse
+import ast
+import json
+import math
 import os
+import re
+import urllib.error
+import urllib.request
+from collections import Counter
 
-
-# Illustrative rewrites shown with each diagnostic. These are examples rather
-# than automatic edits because a safe rewrite often depends on surrounding code.
-SUGGESTED_CODE = {
-    "manual_list_build": "result = [i * i for i in range(1000)]",
-    "manual_sum_loop": "total = sum(values)",
-    "string_concat_loop": "parts = [str(value) for value in values]\nresult = ''.join(parts)",
-    "range_len_iteration": "for item in data:\n    ...\n# Or, when the index is needed:\nfor i, item in enumerate(data):\n    ...",
-    "repeated_attr_lookup": "items = self.items\nfor item in items:\n    ...",
-    "nested_loop_product": "from itertools import product\nfor i, j in product(values_a, values_b):\n    ...",
-    "list_membership_test": "if item in {1, 2, 3, 4, 5}:\n    ...",
-    "list_instead_of_generator": "total = sum(x * x for x in values)",
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "training_data", "code_suggestion_model.json")
+MIN_CONFIDENCE = 0.72
+SUGGESTIBLE_LABELS = {"manual_list_build", "manual_sum_loop", "string_concat_loop", "range_len_iteration", "list_membership_test", "list_instead_of_generator"}
+# Used only when no general-purpose code model has been configured.
+FALLBACK_DETAILS = {
+    "manual_list_build": ("Build this collection with a comprehension.", "10-30%"),
+    "manual_sum_loop": ("Use Python's C-implemented sum() for this accumulation.", "20-40%"),
+    "string_concat_loop": ("Collect parts and join them once rather than repeatedly copying a string.", "50-80%"),
+    "range_len_iteration": ("Iterate over values directly, or use enumerate() when the index is needed.", "Minor"),
+    "list_membership_test": ("Use a set literal for repeated constant membership checks.", "90%+"),
+    "list_instead_of_generator": ("Pass a generator expression to avoid materialising an intermediate list.", "Moderate"),
 }
 
 
-class AntiPatternDetector(ast.NodeVisitor):
-    """Walks a Python AST and detects energy anti-patterns."""
+def _json_from_model_response(content):
+    """Extract the first JSON object even if a model adds a short preamble."""
+    content = content.strip()
+    if content.startswith("```"):
+        content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content, flags=re.IGNORECASE)
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        decoder = json.JSONDecoder()
+        for index, character in enumerate(content):
+            if character != "{":
+                continue
+            try:
+                value, _ = decoder.raw_decode(content[index:])
+                if isinstance(value, dict):
+                    return value
+            except json.JSONDecodeError:
+                continue
+        raise ValueError("No JSON object found in the code-model response")
 
-    def __init__(self, source_lines, target_functions=None):
-        self.source_lines = source_lines
-        self.target_functions = target_functions  # If None, scan all functions
-        self.suggestions = []
-        self._current_function = None
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
+def model_suggestions(source, endpoint, model_name, timeout_seconds):
+    """Ask an OpenAI-compatible code model for general, source-aware improvements.
 
-    def _add(self, line, pattern, message, savings, source):
-        self.suggestions.append({
-            "line": line,
-            "function": self._current_function or "<module>",
-            "pattern": pattern,
-            "message": message,
-            "severity": "warning",
-            "estimated_savings": savings,
-            "source": source,
-            "suggested_code": SUGGESTED_CODE.get(pattern, ""),
+    This supports local Ollama and self-hosted compatible endpoints.  The
+    response is treated strictly as data and is validated before it reaches
+    VS Code; it is never automatically applied to the source file.
+    """
+    prompt = """You are an expert Python performance and energy reviewer. Review the complete Python source below. Find any meaningful, behaviour-preserving improvement, including algorithmic complexity, I/O, data structures, concurrency, memory allocation, and Python idioms. Do not invent issues. Return ONLY JSON in this exact form:
+{"suggestions":[{"line":positive integer,"title":"short category","message":"specific reason","estimated_savings":"qualified estimate or Unknown","suggested_code":"replacement code or a concise patch","confidence":number from 0 to 1}]}
+Each suggestion must identify a real line in the supplied source. Return an empty array when no safe improvement is evident. Never recommend a change that alters observable behavior without explicitly warning in message.
+
+Python source:\n```python\n""" + source + "\n```"
+    payload = json.dumps({"model": model_name, "temperature": 0.1, "stream": False, "max_tokens": 1200,
+                          "response_format": {"type": "json_object"}, "messages": [
+        {"role": "system", "content": "Return valid JSON only. Prefer correctness over speculative micro-optimizations."},
+        {"role": "user", "content": prompt},
+    ]}).encode("utf-8")
+    request = urllib.request.Request(endpoint, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            response_payload = json.loads(response.read().decode("utf-8"))
+        content = response_payload["choices"][0]["message"]["content"]
+        result = _json_from_model_response(content)
+    except (urllib.error.URLError, TimeoutError, ValueError, KeyError, json.JSONDecodeError) as error:
+        return [], f"Code model unavailable ({error}); used offline fallback."
+    if not isinstance(result, dict) or not isinstance(result.get("suggestions"), list):
+        return [], "Code model returned an invalid response; used offline fallback."
+    lines, suggestions = len(source.splitlines()), []
+    for item in result["suggestions"][:20]:
+        if not isinstance(item, dict) or not isinstance(item.get("line"), int) or not 1 <= item["line"] <= lines:
+            continue
+        if not all(isinstance(item.get(field), str) and item[field].strip() for field in ("title", "message", "suggested_code")):
+            continue
+        confidence = item.get("confidence", 0)
+        if not isinstance(confidence, (int, float)) or not 0 <= confidence <= 1:
+            confidence = 0
+        suggestions.append({
+            "line": item["line"], "function": "<module>", "pattern": item["title"].strip()[:80],
+            "message": item["message"].strip(), "severity": "warning",
+            "estimated_savings": str(item.get("estimated_savings", "Unknown"))[:80],
+            "source": f"code model ({model_name})", "confidence": round(confidence, 3),
+            "suggested_code": item["suggested_code"].strip(),
         })
-
-    def _is_target_function(self, name):
-        """Should we analyse this function?"""
-        if self.target_functions is None:
-            return True
-        return name in self.target_functions
-
-    # ------------------------------------------------------------------
-    # Visitor entry points
-    # ------------------------------------------------------------------
-
-    def visit_FunctionDef(self, node):
-        if self._is_target_function(node.name):
-            old = self._current_function
-            self._current_function = node.name
-            self.generic_visit(node)
-            self._current_function = old
-        # Skip functions we don't care about
-
-    visit_AsyncFunctionDef = visit_FunctionDef
-
-    def visit_For(self, node):
-        """Detect patterns inside for-loops."""
-        if self._current_function is None and self.target_functions is not None:
-            return
-
-        self._check_manual_list_build(node)
-        self._check_manual_sum(node)
-        self._check_string_concat(node)
-        self._check_range_len(node)
-        self._check_repeated_attr_lookup(node)
-        self._check_nested_loop_product(node)
-
-        self.generic_visit(node)
-
-    def visit_Compare(self, node):
-        """Detect membership tests on lists (pattern 4)."""
-        if self._current_function is None and self.target_functions is not None:
-            return
-        self._check_list_membership(node)
-        self.generic_visit(node)
-
-    def visit_Call(self, node):
-        """Detect full-list materialisation where a generator would do (pattern 5),
-        and manual numerical loops that could use NumPy (pattern 7)."""
-        if self._current_function is None and self.target_functions is not None:
-            return
-        self._check_list_instead_of_generator(node)
-        self.generic_visit(node)
-
-    # ------------------------------------------------------------------
-    # Pattern detectors
-    # ------------------------------------------------------------------
-
-    def _check_manual_list_build(self, for_node):
-        """Pattern 1: for loop with list.append() → use list comprehension."""
-        for stmt in ast.walk(for_node):
-            if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
-                call = stmt.value
-                if (isinstance(call.func, ast.Attribute)
-                        and call.func.attr == "append"):
-                    self._add(
-                        for_node.lineno,
-                        "manual_list_build",
-                        "Manual list building with .append() inside a for-loop. "
-                        "Use a list comprehension for ~10-30% energy savings.",
-                        "10-30%",
-                        "Georgiou et al. (2022)",
-                    )
-                    return  # One suggestion per loop is enough
-
-    def _check_manual_sum(self, for_node):
-        """Pattern 2: for loop with += accumulation on a number → use sum()."""
-        for stmt in for_node.body:
-            if isinstance(stmt, ast.AugAssign) and isinstance(stmt.op, ast.Add):
-                # Check the target is a simple name (not an attribute or subscript)
-                if isinstance(stmt.target, ast.Name):
-                    self._add(
-                        for_node.lineno,
-                        "manual_sum_loop",
-                        "Manual accumulation loop detected (var += ...). "
-                        "Use built-in sum() for ~20-40% energy savings.",
-                        "20-40%",
-                        "Georgiou et al. (2022)",
-                    )
-                    return
-
-    def _check_string_concat(self, for_node):
-        """Pattern 3: string concatenation with += inside a loop → use join()."""
-        for stmt in for_node.body:
-            if isinstance(stmt, ast.AugAssign) and isinstance(stmt.op, ast.Add):
-                if isinstance(stmt.target, ast.Name):
-                    # Heuristic: if the value involves a str call, format, or
-                    # the variable name contains 'str', 'text', 'result', 'output', 'html', 'msg'
-                    target_name = stmt.target.id.lower()
-                    string_hints = {"str", "text", "result", "output", "html",
-                                    "msg", "query", "sql", "csv", "line", "log",
-                                    "string", "s", "buf", "buffer"}
-                    if target_name in string_hints:
-                        self._add(
-                            for_node.lineno,
-                            "string_concat_loop",
-                            f"Possible string concatenation with += in a loop (variable '{stmt.target.id}'). "
-                            "Use ''.join() for ~50-80% energy savings on large strings.",
-                            "50-80%",
-                            "Python best practice",
-                        )
-                        return
-
-    def _check_range_len(self, for_node):
-        """Pattern 8: for i in range(len(x)) → use enumerate() or direct iteration."""
-        iter_node = for_node.iter
-        if isinstance(iter_node, ast.Call) and isinstance(iter_node.func, ast.Name):
-            if iter_node.func.id == "range" and len(iter_node.args) == 1:
-                arg = iter_node.args[0]
-                if (isinstance(arg, ast.Call)
-                        and isinstance(arg.func, ast.Name)
-                        and arg.func.id == "len"):
-                    self._add(
-                        for_node.lineno,
-                        "range_len_iteration",
-                        "Using range(len(...)) to iterate. "
-                        "Use enumerate() or iterate directly for cleaner, slightly more efficient code.",
-                        "Minor",
-                        "Python best practice",
-                    )
-
-    def _check_repeated_attr_lookup(self, for_node):
-        """Pattern 6: Same attribute accessed repeatedly inside a loop → cache it."""
-        attr_counts = {}
-        for node in ast.walk(for_node):
-            if isinstance(node, ast.Attribute):
-                # Build a string representation like 'self.data'
-                key = ast.dump(node)
-                attr_counts[key] = attr_counts.get(key, 0) + 1
-
-        for key, count in attr_counts.items():
-            if count >= 3:
-                self._add(
-                    for_node.lineno,
-                    "repeated_attr_lookup",
-                    "Repeated attribute lookup detected inside this loop (3+ accesses). "
-                    "Cache the attribute in a local variable for ~5-15% energy savings.",
-                    "5-15%",
-                    "CPython internals",
-                )
-                return
-
-    def _check_nested_loop_product(self, for_node):
-        """Pattern 9: Nested for-loops that could use itertools.product()."""
-        for stmt in for_node.body:
-            if isinstance(stmt, ast.For):
-                # Check if both loops are simple range/iterable loops with
-                # no complex dependencies between them
-                self._add(
-                    for_node.lineno,
-                    "nested_loop_product",
-                    "Nested for-loops detected. If the iterations are independent, "
-                    "consider using itertools.product() for ~10-20% energy savings.",
-                    "10-20%",
-                    "Python best practice",
-                )
-                return
-
-    def _check_list_membership(self, compare_node):
-        """Pattern 4: 'if x in some_list' → use a set for O(1) lookups."""
-        for op in compare_node.ops:
-            if isinstance(op, (ast.In, ast.NotIn)):
-                for comparator in compare_node.comparators:
-                    if isinstance(comparator, ast.List):
-                        self._add(
-                            compare_node.lineno,
-                            "list_membership_test",
-                            "Membership test on a list literal. "
-                            "Use a set literal for O(1) lookups and ~90%+ energy savings on large collections.",
-                            "90%+",
-                            "Georgiou et al. (2022)",
-                        )
-                        return
-
-    def _check_list_instead_of_generator(self, call_node):
-        """Pattern 5: list() passed to a function that only iterates (e.g. sum(list(...)))."""
-        if isinstance(call_node.func, ast.Name):
-            consuming_funcs = {"sum", "min", "max", "any", "all", "sorted", "tuple"}
-            if call_node.func.id in consuming_funcs and call_node.args:
-                arg = call_node.args[0]
-                if isinstance(arg, ast.ListComp):
-                    self._add(
-                        call_node.lineno,
-                        "list_instead_of_generator",
-                        f"List comprehension passed to {call_node.func.id}(). "
-                        "Use a generator expression instead to save memory and energy.",
-                        "Moderate",
-                        "Georgiou et al. (2022)",
-                    )
+    return suggestions, None
 
 
-def analyse_file(filepath, target_functions=None):
-    """Parse a Python file and return energy suggestions."""
-    with open(filepath, "r", encoding="utf-8") as f:
-        source = f.read()
+def tokenize(source):
+    """Normalized lexical tokens and bigrams are the model features."""
+    words = re.findall(r"[A-Za-z_][A-Za-z_0-9]*|\+?=|\S", source.lower())
+    features = ["tok:" + word for word in words]
+    features += ["bi:" + words[i] + "_" + words[i + 1] for i in range(len(words) - 1)]
+    return features
 
-    source_lines = source.splitlines()
 
+class SuggestionModel:
+    def __init__(self, payload):
+        self.labels, self.log_priors = payload["labels"], payload["log_priors"]
+        self.log_likelihoods = payload["log_likelihoods"]
+        self.default_log_likelihoods = payload["default_log_likelihoods"]
+
+    @classmethod
+    def load(cls, model_path=MODEL_PATH):
+        with open(model_path, encoding="utf-8") as model_file:
+            payload = json.load(model_file)
+        if payload.get("model_type") != "multinomial_naive_bayes_code_suggestions":
+            raise ValueError("Unexpected suggestion model type")
+        return cls(payload)
+
+    def predict(self, source):
+        scores = {}
+        for label in self.labels:
+            score, weights = self.log_priors[label], self.log_likelihoods[label]
+            default = self.default_log_likelihoods[label]
+            for feature, count in Counter(tokenize(source)).items():
+                score += count * weights.get(feature, default)
+            scores[label] = score
+        maximum = max(scores.values())
+        normalizer = maximum + math.log(sum(math.exp(value - maximum) for value in scores.values()))
+        label = max(scores, key=scores.get)
+        return label, math.exp(scores[label] - normalizer)
+
+
+def unparse(node):
+    return ast.unparse(node).strip()
+
+
+def replacement_for(label, node):
+    """Build a reviewable contextual rewrite; source is never modified."""
+    if label == "manual_list_build" and isinstance(node, ast.For) and isinstance(node.target, ast.Name):
+        for statement in node.body:
+            if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call):
+                call = statement.value
+                if isinstance(call.func, ast.Attribute) and call.func.attr == "append" and isinstance(call.func.value, ast.Name) and len(call.args) == 1:
+                    return f"{call.func.value.id} = [{unparse(call.args[0])} for {unparse(node.target)} in {unparse(node.iter)}]"
+    if label in {"manual_sum_loop", "string_concat_loop"} and isinstance(node, ast.For) and isinstance(node.target, ast.Name):
+        for statement in node.body:
+            if isinstance(statement, ast.AugAssign) and isinstance(statement.op, ast.Add) and isinstance(statement.target, ast.Name):
+                expression = unparse(statement.value)
+                if label == "manual_sum_loop":
+                    return f"{statement.target.id} = sum({expression} for {unparse(node.target)} in {unparse(node.iter)})"
+                return f"{statement.target.id} = ''.join(str({expression}) for {unparse(node.target)} in {unparse(node.iter)})"
+    if label == "range_len_iteration" and isinstance(node, ast.For):
+        sequence = node.iter.args[0].args[0]
+        if isinstance(node.target, ast.Name):
+            return f"for {node.target.id} in {unparse(sequence)}:\n    ..."
+        return f"for index, item in enumerate({unparse(sequence)}):\n    ..."
+    if label == "list_membership_test" and isinstance(node, ast.Compare):
+        values = next((part for part in node.comparators if isinstance(part, ast.List)), None)
+        if values is not None:
+            operator = "not in" if isinstance(node.ops[0], ast.NotIn) else "in"
+            return f"{unparse(node.left)} {operator} {{{', '.join(unparse(value) for value in values.elts)}}}"
+    if label == "list_instead_of_generator" and isinstance(node, ast.Call) and node.args and isinstance(node.args[0], ast.ListComp):
+        return f"{unparse(node.func)}({unparse(node.args[0])[1:-1]})"
+    return "Review this expression and apply the refactoring only if behaviour is preserved."
+
+
+def compatible(label, node):
+    if label in {"manual_list_build", "manual_sum_loop", "string_concat_loop"}:
+        return isinstance(node, ast.For)
+    if label == "range_len_iteration":
+        return (isinstance(node, ast.For) and isinstance(node.iter, ast.Call) and isinstance(node.iter.func, ast.Name) and node.iter.func.id == "range" and len(node.iter.args) == 1 and isinstance(node.iter.args[0], ast.Call) and isinstance(node.iter.args[0].func, ast.Name) and node.iter.args[0].func.id == "len")
+    if label == "list_membership_test":
+        return isinstance(node, ast.Compare) and any(isinstance(value, ast.List) for value in node.comparators)
+    return label == "list_instead_of_generator" and isinstance(node, ast.Call) and bool(node.args) and isinstance(node.args[0], ast.ListComp)
+
+
+def analyse_file(filepath, target_functions=None, model_path=MODEL_PATH, ai_endpoint=None, ai_model=None, ai_timeout=180):
+    with open(filepath, encoding="utf-8") as source_file:
+        source = source_file.read()
     try:
         tree = ast.parse(source, filename=filepath)
-    except SyntaxError as e:
-        return {"error": f"Syntax error in {filepath}: {e}"}
-
-    detector = AntiPatternDetector(source_lines, target_functions)
-    detector.visit(tree)
-
-    return {"suggestions": detector.suggestions}
+    except SyntaxError as error:
+        return {"error": f"Syntax error in {filepath}: {error}"}
+    functions = [(node.lineno, node.end_lineno, node.name) for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    ai_endpoint = ai_endpoint or os.environ.get("ECOCODE_SUGGESTION_ENDPOINT")
+    ai_model = ai_model or os.environ.get("ECOCODE_SUGGESTION_MODEL", "qwen2.5-coder:7b")
+    try:
+        ai_timeout = max(15, min(float(ai_timeout), 600))
+    except (TypeError, ValueError):
+        ai_timeout = 180
+    if ai_endpoint:
+        suggestions, warning = model_suggestions(source, ai_endpoint, ai_model, ai_timeout)
+        for suggestion in suggestions:
+            suggestion["function"] = next((name for start, end, name in functions if start <= suggestion["line"] <= end), "<module>")
+        if target_functions is not None:
+            suggestions = [suggestion for suggestion in suggestions if suggestion["function"] in target_functions]
+        if suggestions:
+            return {"model_type": "general_code_model", "model": ai_model, "suggestions": suggestions}
+        warning = warning or "Code model returned no usable suggestions; used offline fallback."
+    try:
+        model = SuggestionModel.load(model_path)
+    except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
+        return {"error": f"Suggestion model unavailable: {error}", "suggestions": []}
+    suggestions, seen = [], set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.For, ast.Compare, ast.Call)):
+            continue
+        function = next((name for start, end, name in functions if start <= node.lineno <= end), "<module>")
+        if target_functions is not None and function not in target_functions:
+            continue
+        label, confidence = model.predict(ast.get_source_segment(source, node) or unparse(node))
+        if label not in SUGGESTIBLE_LABELS or confidence < MIN_CONFIDENCE or not compatible(label, node) or (node.lineno, label) in seen:
+            continue
+        seen.add((node.lineno, label))
+        message, savings = FALLBACK_DETAILS[label]
+        suggestions.append({"line": node.lineno, "function": function, "pattern": label, "message": message, "severity": "warning", "estimated_savings": savings, "source": "learned code-pattern model", "confidence": round(confidence, 3), "suggested_code": replacement_for(label, node)})
+    result = {"model_type": "multinomial_naive_bayes_code_suggestions", "suggestions": suggestions}
+    if ai_endpoint and warning:
+        result["warning"] = warning
+    return result
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="EcoCode Suggestion Engine — detect energy anti-patterns in Python"
-    )
-    parser.add_argument("script", help="Target Python script to analyse")
-    parser.add_argument(
-        "--functions",
-        nargs="*",
-        default=None,
-        help="Limit analysis to these function names (space-separated). "
-             "If omitted, all functions are analysed.",
-    )
+    parser = argparse.ArgumentParser(description="EcoCode learned suggestion engine")
+    parser.add_argument("script")
+    parser.add_argument("--functions", nargs="*", default=None)
+    parser.add_argument("--model", default=MODEL_PATH)
+    parser.add_argument("--ai-endpoint", help="OpenAI-compatible local/self-hosted code-model endpoint")
+    parser.add_argument("--ai-model", help="Code-model name, for example qwen2.5-coder:7b")
+    parser.add_argument("--ai-timeout", type=float, default=180, help="Code-model request timeout in seconds (15-600)")
     args = parser.parse_args()
-
-    target_script = os.path.abspath(args.script)
-    result = analyse_file(target_script, args.functions)
-    print(json.dumps(result, indent=2))
+    print(json.dumps(analyse_file(os.path.abspath(args.script), args.functions, args.model, args.ai_endpoint, args.ai_model, args.ai_timeout), indent=2))
 
 
 if __name__ == "__main__":
