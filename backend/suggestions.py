@@ -11,6 +11,20 @@ import argparse
 import os
 
 
+# Illustrative rewrites shown with each diagnostic. These are examples rather
+# than automatic edits because a safe rewrite often depends on surrounding code.
+SUGGESTED_CODE = {
+    "manual_list_build": "result = [i * i for i in range(1000)]",
+    "manual_sum_loop": "total = sum(values)",
+    "string_concat_loop": "parts = [str(value) for value in values]\nresult = ''.join(parts)",
+    "range_len_iteration": "for item in data:\n    ...\n# Or, when the index is needed:\nfor i, item in enumerate(data):\n    ...",
+    "repeated_attr_lookup": "items = self.items\nfor item in items:\n    ...",
+    "nested_loop_product": "from itertools import product\nfor i, j in product(values_a, values_b):\n    ...",
+    "list_membership_test": "if item in {1, 2, 3, 4, 5}:\n    ...",
+    "list_instead_of_generator": "total = sum(x * x for x in values)",
+}
+
+
 class AntiPatternDetector(ast.NodeVisitor):
     """Walks a Python AST and detects energy anti-patterns."""
 
@@ -33,6 +47,7 @@ class AntiPatternDetector(ast.NodeVisitor):
             "severity": "warning",
             "estimated_savings": savings,
             "source": source,
+            "suggested_code": SUGGESTED_CODE.get(pattern, ""),
         })
 
     def _is_target_function(self, name):

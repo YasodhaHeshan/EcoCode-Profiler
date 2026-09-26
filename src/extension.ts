@@ -192,7 +192,8 @@ function displayDiagnostics(document: vscode.TextDocument, suggestionsReport: an
 
         const diagnostic = new vscode.Diagnostic(
             range,
-            `⚡ ${suggestion.message} [${suggestion.estimated_savings} savings — ${suggestion.source}]`,
+            `⚡ ${suggestion.message} [${suggestion.estimated_savings} savings — ${suggestion.source}]` +
+                (suggestion.suggested_code ? `\n\nSuggested rewrite (adapt names/context):\n${suggestion.suggested_code}` : ''),
             severity
         );
         diagnostic.source = 'EcoCode Profiler';

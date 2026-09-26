@@ -1,0 +1,50 @@
+{
+  "model_type": "benchmark_median_runtime_baseline",
+  "target": "elapsed_secs",
+  "training_rows": 42,
+  "cpu_model_known": false,
+  "energy_labels_present": false,
+  "benchmarks": {
+    "binary-trees": {
+      "samples": 5,
+      "median_elapsed_secs": 35.371
+    },
+    "fannkuch-redux": {
+      "samples": 3,
+      "median_elapsed_secs": 943.875
+    },
+    "fasta": {
+      "samples": 5,
+      "median_elapsed_secs": 39.063
+    },
+    "k-nucleotide": {
+      "samples": 5,
+      "median_elapsed_secs": 76.667
+    },
+    "mandelbrot": {
+      "samples": 5,
+      "median_elapsed_secs": 260.631
+    },
+    "n-body": {
+      "samples": 3,
+      "median_elapsed_secs": 442.058
+    },
+    "pidigits": {
+      "samples": 4,
+      "median_elapsed_secs": 1.4775
+    },
+    "regex-redux": {
+      "samples": 2,
+      "median_elapsed_secs": 5.1855
+    },
+    "reverse-complement": {
+      "samples": 6,
+      "median_elapsed_secs": 8.840499999999999
+    },
+    "spectral-norm": {
+      "samples": 4,
+      "median_elapsed_secs": 229.793
+    }
+  },
+  "limitations": "Runtime-only baseline from an unidentified CPU; not an energy model and not validated for Intel 12th/13th gen CPUs."
+}
