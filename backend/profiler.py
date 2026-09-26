@@ -48,6 +48,7 @@ class EcoProfiler:
         
         self.function_stats = {}
         self.call_stack = []
+        self.line_trace_state = {}
         
         # Decide measurement backend based on platform
         self.is_linux = platform.system() == "Linux"
@@ -122,7 +123,8 @@ class EcoProfiler:
                     "calls": 0,
                     "total_time_s": 0.0,
                     "total_energy_j": 0.0,
-                    "carbon_gco2e": 0.0
+                    "carbon_gco2e": 0.0,
+                    "line_time_s": {}
                 }
         
         elif event == "return":
@@ -136,6 +138,26 @@ class EcoProfiler:
                 self.function_stats[func_name]["total_time_s"] += elapsed_time
                 
         return self.profile_hook
+
+    def trace_hook(self, frame, event, arg):
+        """Accumulate elapsed time by source line for the target script."""
+        if frame.f_code.co_filename != self.target_file:
+            return None
+        frame_id = id(frame)
+        now = time.perf_counter()
+        previous = self.line_trace_state.get(frame_id)
+        if previous is not None and event in ("line", "return", "exception"):
+            function_name, line_number, started = previous
+            elapsed = max(0.0, now - started)
+            stats = self.function_stats.get(function_name)
+            if stats is not None:
+                key = str(line_number)
+                stats["line_time_s"][key] = stats["line_time_s"].get(key, 0.0) + elapsed
+        if event == "line":
+            self.line_trace_state[frame_id] = (frame.f_code.co_name, frame.f_lineno, now)
+        else:
+            self.line_trace_state.pop(frame_id, None)
+        return self.trace_hook
 
     def calculate_final_energy(self):
         """FR-05 & FR-07: Calculate final energy and carbon totals."""
@@ -222,6 +244,7 @@ def main():
                            args.input_size, args.cpu_model, args.energy_model)
     
     sys.setprofile(profiler.profile_hook)
+    sys.settrace(profiler.trace_hook)
 
     # Redirect the target script's stdout to stderr so it doesn't
     # corrupt the JSON output that the VS Code extension reads from stdout.
@@ -237,6 +260,7 @@ def main():
         print(f"Error executing script: {e}", file=sys.stderr)
     finally:
         sys.setprofile(None)
+        sys.settrace(None)
         # Restore stdout and write the JSON report
         sys.stdout = original_stdout
         report = profiler.generate_report()

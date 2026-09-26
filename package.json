@@ -10,7 +10,8 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:ecocode-profiler.profileCurrentFile"
+    "onCommand:ecocode-profiler.profileCurrentFile",
+    "onCommand:ecocode-profiler.exportReport"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -18,8 +19,20 @@
       {
         "command": "ecocode-profiler.profileCurrentFile",
         "title": "EcoCode: Profile Current Python File"
+      },
+      {
+        "command": "ecocode-profiler.exportReport",
+        "title": "EcoCode: Export Profiling Report"
       }
     ],
+    "views": {
+      "explorer": [
+        {
+          "id": "ecocode.summary",
+          "name": "EcoCode Summary"
+        }
+      ]
+    },
     "configuration": {
       "title": "EcoCode Profiler",
       "properties": {

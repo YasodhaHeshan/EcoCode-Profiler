@@ -19,6 +19,12 @@ This document tracks the progress of the EcoCode Profiler research project based
 - [x] **FR-03:** Implemented the **TDP-based software fallback estimator** using `psutil.cpu_percent()` and elapsed time.
 - [x] **FR-04 & FR-05:** Instrumented Python execution using `sys.setprofile` to accurately track function entry/exit times and distribute energy proportionally.
 - [x] **FR-07:** Integrated the static Sri Lankan carbon intensity factor (310 gCO₂e/kWh) to convert energy to carbon emissions.
+- [x] Added `backend/train_intel_energy_model.js` to validate and summarize Intel energy measurements into a transparent grouped-median baseline.
+- [x] Trained `backend/training_data/intel_energy_model.json` from the 1,000 supplied measurement rows, covering 10 benchmark names and 22 CPU models.
+- [x] Integrated the energy baseline into `backend/profiler.py`: it selects a matching CPU/benchmark/input-size group when possible, scales the group's median average power to the observed run duration, and retains the TDP estimate as a fallback.
+- [x] Added profiler CLI options for benchmark, input size, CPU model, and energy-model path; included the selected estimate method and match details in report metadata.
+- [x] Added per-line elapsed-time attribution to profiler output for source heatmaps.
+- [x] Compiled the VS Code extension successfully with `npm.cmd run compile`. The Extension Development Host still needs to be launched/continued in VS Code for the profile command to be available.
 
 ### Phase 3: VS Code Extension UI (MVP)
 - [x] Registered the `EcoCode: Profile Current Python File` command.
@@ -48,17 +54,19 @@ This document tracks the progress of the EcoCode Profiler research project based
 ## 🚀 What Needs To Be Done Next
 
 ### 1. Remaining Extension Features
-- [ ] **FR-10 (Summary Panel):** Build a sidebar panel (using VS Code's Webview or TreeView API) that ranks functions from most to least energy-consuming and shows their associated suggestions.
-- [ ] **FR-12 (Persistence):** Save profiling results in the extension's workspace state so inline annotations and suggestions survive editor restarts.
-- [ ] **FR-13 (Export Report):** Add a command to export the raw JSON profiling + suggestions report to a file.
-- [ ] **FR-14 (Line-level Heatmap):** Highlight specific lines inside the most expensive function with color-coded background.
+- [x] **FR-10 (Summary Panel):** Added the `EcoCode Summary` Explorer TreeView, ranking functions by estimated energy and listing each function's suggestions as child items.
+- [x] **FR-12 (Persistence):** Save each file's latest profiling report and suggestions in VS Code workspace state; restore annotations, diagnostics, and the latest summary when the extension host restarts.
+- [x] **FR-13 (Export Report):** Added `EcoCode: Export Profiling Report` to save the raw profiler report and suggestions together as JSON.
+- [x] **FR-14 (Line-level Heatmap):** Added per-line timing to profiler output and color-coded line decorations for source lines attributed to the most energy-consuming function.
 
 ### 2. Hardware Measurement (Backend A)
 - [ ] **FR-02 (Direct RAPL Reading):** Expand `profiler.py` to read `/sys/class/powercap/intel-rapl` energy counters on Linux.
 - [ ] **FR-06 (Wrap-around Correction):** Add logic to handle 32-bit RAPL counter overflow.
+- [ ] Update the VS Code extension runner to expose benchmark, input-size, and CPU-model options when invoking the profiler. At present, the extension uses profiler defaults (benchmark from script filename, detected CPU, and no input-size key).
 
 ### 3. Evaluation & Validation
 - [ ] **Offline Calibration:** Use the *Energy-Languages* dataset (Pereira et al.) to derive the optimal `CALIBRATION_COEFFICIENT` via linear regression.
+- [ ] Evaluate the Intel grouped-median baseline on held-out measurements and report prediction error. The current baseline is a lookup model, not a regression model, and has not been validated for predictive accuracy.
 - [ ] **On-Device Validation:** On a supported Intel 12th/13th Gen Linux machine, compare Backend A (RAPL) vs Backend B (TDP) and calculate MAPE. Target: ≤ 15%.
 - [ ] **Suggestion Precision Evaluation (NEW):** Run the suggestion engine against benchmark scripts, classify each suggestion as TP or FP, and calculate precision. Target: ≥ 80%.
 - [ ] **Usability Assessment:** Distribute the extension to Python developers and collect Likert-scale feedback on annotations, suggestions, and overall usefulness.
@@ -80,9 +88,15 @@ EcoCode-Profiler/
 ├── backend/
 │   ├── profiler.py          # Energy measurement backend (Phase 2)
 │   ├── suggestions.py       # Anti-pattern suggestion engine (Phase 4) ✨
+│   ├── train_intel_energy_model.js # Builds grouped-median energy baseline
+│   ├── training_data/
+│   │   ├── intel_energy_measurements.csv # Supplied measured energy data (1,000 rows)
+│   │   ├── intel_energy_model.json       # Trained energy baseline
+│   │   ├── python3_benchmarks_normalized.csv
+│   │   └── runtime_baseline_model.json
 │   └── requirements.txt     # Python dependencies (psutil)
 ├── src/
-│   └── extension.ts         # VS Code extension entry point (Phase 3)
+│   └── extension.ts         # Commands, summary view, persistence, export, and decorations
 ├── out/                     # Compiled JavaScript output
 ├── node_modules/            # Node.js dependencies
 ├── .gitignore
