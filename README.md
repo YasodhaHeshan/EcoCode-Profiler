@@ -13,6 +13,7 @@ EcoCode Profiler is a Visual Studio Code extension for measuring and estimating 
 - **JSON export:** The **EcoCode: Export Profiling Report** command saves the profiler report and suggestions together.
 - **General code-model suggestions:** Configure an OpenAI-compatible local or self-hosted code model to review any Python source for algorithmic, I/O, memory, data-structure, and idiomatic improvements. The built-in classifier is an offline fallback for six high-confidence patterns; neither mode edits source automatically.
 - **Configurable carbon intensity:** Converts estimated energy to carbon equivalent using a configurable grid intensity (default: 310 gCO₂e/kWh).
+- **Offline calibration:** The TDP fallback uses `CALIBRATION_COEFFICIENT = 0.78795087`, fitted from 42 measured Energy-Languages benchmark rows with ordinary least squares through the origin.
 
 ## How the estimate is selected
 
@@ -58,6 +59,16 @@ To retrain the code-suggestion classifier after adding labelled `{label, code}` 
 node backend/train_suggestion_model.js
 ```
 
+## Run model evaluations
+
+Run the reproducible holdout evaluation, suggestion-corpus precision check, and paired RAPL/TDP validation:
+
+```sh
+python backend/evaluate.py --calibration-csv backend/training_data/python3_benchmarks_energy_measured.csv --output backend/evaluation_results.json
+```
+
+The report uses a seeded 80/20 split (seed 42) for the Intel grouped-median baseline and the labelled JSONL suggestion corpus. It reads `backend/training_data/on_device_validation_filled.csv` by default and recomputes mean MAPE as `abs(TDP - RAPL) / RAPL * 100`. The completed 30-run paired dataset produces 45.0147% mean MAPE, so it does not meet the ≤15% target; 12/30 runs are within the target. The current result is in `backend/evaluation_results.json`.
+
 For broad, whole-file suggestions, configure `ecocode.suggestionModel.endpoint` to an OpenAI-compatible endpoint (for example Ollama's `http://localhost:11434/v1/chat/completions`) and set `ecocode.suggestionModel.name` to an installed coding model such as `qwen2.5-coder:7b`.
 The default model timeout is 180 seconds; set `ecocode.suggestionModel.timeoutSeconds` (15–600) higher on CPU-only machines.
 
@@ -83,6 +94,7 @@ python backend/profiler.py path/to/script.py \
 ## Current limitations
 
 - RAPL support is Linux-only and depends on accessible Intel powercap counters.
-- The grouped-median Intel model is trained on the supplied measurements and has not yet been validated against held-out data.
+- The grouped-median Intel model is trained on the supplied measurements; the initial held-out evaluation reports 47.5848% MAPE, so it does not meet the on-device 15% target and should not be treated as a validated predictor.
+- The offline suggestion evaluation currently reports 60.00% precision on the labelled corpus, below the 80% target; unsupported labels in the corpus are retained as false negatives for transparency.
 - The extension currently passes default benchmark metadata to the profiler; explicit benchmark, input-size, and CPU-model options are available when running the backend directly.
 - The TDP estimator and per-function allocation are estimates, not direct per-function hardware measurements.

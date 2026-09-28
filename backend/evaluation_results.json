@@ -1,0 +1,211 @@
+{
+  "intel_grouped_median_holdout": {
+    "status": "complete",
+    "rows": 1000,
+    "train_rows": 800,
+    "test_rows": 200,
+    "matched_test_rows": 200,
+    "coverage_percent": 100.0,
+    "mae_joules": 331.113822,
+    "rmse_joules": 529.069534,
+    "mape_percent": 47.5848,
+    "match_levels": {
+      "cpu_model+benchmark_name+input_size": 154,
+      "cpu_model+benchmark_name": 46
+    },
+    "split": {
+      "test_fraction": 0.2,
+      "seed": 42,
+      "method": "random holdout"
+    }
+  },
+  "suggestion_precision": {
+    "status": "complete",
+    "cases": 90,
+    "true_positives": 18,
+    "false_positives": 12,
+    "false_negatives": 60,
+    "precision_percent": 60.0,
+    "case_accuracy_percent": 33.33,
+    "by_label": {
+      "manual_list_build": {
+        "cases": 3,
+        "correct_cases": 3,
+        "predicted_suggestions": 3
+      },
+      "manual_sum_loop": {
+        "cases": 3,
+        "correct_cases": 3,
+        "predicted_suggestions": 3
+      },
+      "string_concat_loop": {
+        "cases": 3,
+        "correct_cases": 3,
+        "predicted_suggestions": 3
+      },
+      "range_len_iteration": {
+        "cases": 3,
+        "correct_cases": 3,
+        "predicted_suggestions": 3
+      },
+      "list_membership_test": {
+        "cases": 3,
+        "correct_cases": 3,
+        "predicted_suggestions": 3
+      },
+      "list_instead_of_generator": {
+        "cases": 3,
+        "correct_cases": 3,
+        "predicted_suggestions": 3
+      },
+      "no_suggestion": {
+        "cases": 12,
+        "correct_cases": 12,
+        "predicted_suggestions": 0
+      },
+      "cached_len_missing": {
+        "cases": 3,
+        "correct_cases": 0,
+        "predicted_suggestions": 0
+      },
+      "attribute_lookup_in_loop": {
+        "cases": 3,
+        "correct_cases": 0,
+        "predicted_suggestions": 1
+      },
+      "old_style_string_formatting": {
+        "cases": 3,
+        "correct_cases": 0,
+        "predicted_suggestions": 0
+      },
+      "nested_loop_membership_check": {
+        "cases": 3,
+        "correct_cases": 0,
+        "predicted_suggestions": 2
+      },
+      "regex_compiled_in_loop": {
+        "cases": 3,
+        "correct_cases": 0,
+        "predicted_suggestions": 0
+      },
+      "full_file_read_into_memory": {
+        "cases": 3,
+        "correct_cases": 0,
+        "predicted_suggestions": 0
+      },
+      "loop_invariant_recomputation": {
+        "cases": 3,
+        "correct_cases": 0,
+        "predicted_suggestions": 0
+      },
+      "pandas_iterrows_loop": {
+        "cases": 3,
+        "correct_cases": 0,
+        "predicted_suggestions": 1
+      },
+      "numpy_python_loop": {
+        "cases": 3,
+        "correct_cases": 0,
+        "predicted_suggestions": 3
+      },
+      "manual_list_copy_loop": {
+        "cases": 3,
+        "correct_cases": 0,
+        "predicted_suggestions": 1
+      },
+      "sorted_for_min_max": {
+        "cases": 3,
+        "correct_cases": 0,
+        "predicted_suggestions": 0
+      },
+      "dict_build_loop": {
+        "cases": 3,
+        "correct_cases": 0,
+        "predicted_suggestions": 1
+      },
+      "repeated_file_open_in_loop": {
+        "cases": 3,
+        "correct_cases": 0,
+        "predicted_suggestions": 0
+      },
+      "busy_wait_polling": {
+        "cases": 3,
+        "correct_cases": 0,
+        "predicted_suggestions": 0
+      },
+      "unnecessary_deepcopy": {
+        "cases": 3,
+        "correct_cases": 0,
+        "predicted_suggestions": 0
+      },
+      "repeated_json_dumps_loop": {
+        "cases": 3,
+        "correct_cases": 0,
+        "predicted_suggestions": 1
+      },
+      "list_concat_plus_loop": {
+        "cases": 3,
+        "correct_cases": 0,
+        "predicted_suggestions": 2
+      },
+      "unnecessary_list_materialization": {
+        "cases": 3,
+        "correct_cases": 0,
+        "predicted_suggestions": 0
+      },
+      "redundant_type_cast": {
+        "cases": 3,
+        "correct_cases": 0,
+        "predicted_suggestions": 0
+      },
+      "double_lookup_check_then_delete": {
+        "cases": 3,
+        "correct_cases": 0,
+        "predicted_suggestions": 0
+      }
+    },
+    "corpus": "code_suggestion_examples.jsonl"
+  },
+  "offline_calibration": {
+    "status": "complete",
+    "rows": 42,
+    "calibration_coefficient": 0.78795087,
+    "method": "ordinary least squares through origin",
+    "predictor": "65 W * cpu_secs_mean",
+    "tdp_w": 65.0,
+    "source": "backend/training_data/python3_benchmarks_energy_measured.csv"
+  },
+  "on_device_rapl_vs_tdp": {
+    "status": "complete",
+    "source": "on_device_validation_filled.csv",
+    "rows": 30,
+    "cpu_models": [
+      "Intel Core i5-12400"
+    ],
+    "data_statuses": {
+      "done": 30
+    },
+    "mean_mape_percent": 45.0147,
+    "median_mape_percent": 55.5244,
+    "target_mape_percent": 15.0,
+    "target_met": false,
+    "runs_within_target": 12,
+    "benchmark_mean_mape_percent": {
+      "binary-trees": 8.8242,
+      "fannkuch-redux": 7.1431,
+      "fasta": 78.2446,
+      "k-nucleotide": 59.9338,
+      "mandelbrot": 6.0956,
+      "n-body": 78.4799,
+      "pidigits": 77.3218,
+      "regex-redux": 51.8368,
+      "reverse-complement": 72.6356,
+      "spectral-norm": 9.6316
+    },
+    "method": "mean absolute percentage error: abs(TDP - RAPL) / RAPL * 100"
+  },
+  "usability_assessment": {
+    "status": "pending",
+    "reason": "Requires developer participants and Likert responses"
+  }
+}

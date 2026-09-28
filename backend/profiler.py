@@ -9,8 +9,9 @@ import re
 import glob
 
 # --- Configuration & Hardware Constants ---
-# Using a static calibration coefficient from the Pereira et al. dataset.
-CALIBRATION_COEFFICIENT = 1.0 
+# Fitted by ordinary least squares through the origin from the measured
+# Energy-Languages benchmark data using 65 W * CPU seconds as the baseline.
+CALIBRATION_COEFFICIENT = 0.78795087
 
 # Default TDP in Watts (This can be mapped based on specific CPU model later)
 DEFAULT_TDP = 65.0 
