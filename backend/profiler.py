@@ -73,7 +73,7 @@ class EcoProfiler:
             return None
 
     def find_energy_baseline(self):
-        """Find the most specific matching measured group in the trained model."""
+        """Return a hierarchical, sparse-group-shrunk measured baseline."""
         if not self.energy_model:
             return None
         model = self.energy_model
@@ -85,20 +85,50 @@ class EcoProfiler:
                 if benchmark_key == self.benchmark and normalize_cpu_model(cpu_key) in cpu_norm:
                     matched_cpu = cpu_key
                     break
-        if matched_cpu and self.input_size:
-            key = f"{matched_cpu}|{self.benchmark}|{self.input_size}"
-            baseline = model.get("by_cpu_model_benchmark_and_input_size", {}).get(key)
-            if baseline:
-                return baseline, "cpu_benchmark_input", key
+        levels = []
+        global_baseline = model.get("global")
+        if global_baseline:
+            levels.append((global_baseline, "global", "global"))
+        benchmark_baseline = model.get("by_benchmark", {}).get(self.benchmark)
+        if benchmark_baseline:
+            levels.append((benchmark_baseline, "benchmark", self.benchmark))
         if matched_cpu:
             key = f"{matched_cpu}|{self.benchmark}"
             baseline = model.get("by_cpu_model_and_benchmark", {}).get(key)
             if baseline:
-                return baseline, "cpu_benchmark", key
-        baseline = model.get("by_benchmark", {}).get(self.benchmark)
-        if baseline:
-            return baseline, "benchmark", self.benchmark
-        return None
+                levels.append((baseline, "cpu_benchmark", key))
+            if self.input_size:
+                key = f"{matched_cpu}|{self.benchmark}|{self.input_size}"
+                baseline = model.get("by_cpu_model_benchmark_and_input_size", {}).get(key)
+                if baseline:
+                    levels.append((baseline, "cpu_benchmark_input", key))
+        if not levels:
+            return None
+
+        pseudo_samples = float(model.get("sparse_group_shrinkage_samples", 3))
+        estimate = None
+        contributing_levels = []
+        for baseline, level, key in levels:
+            power = baseline.get("median_average_power_w")
+            samples = baseline.get("samples", 0)
+            if not isinstance(power, (int, float)) or power <= 0:
+                continue
+            if estimate is None:
+                estimate = power
+            else:
+                weight = samples / (samples + pseudo_samples) if samples > 0 else 0.0
+                estimate = weight * power + (1 - weight) * estimate
+            contributing_levels.append((level, key, samples))
+        if estimate is None:
+            return None
+        most_specific = contributing_levels[-1]
+        return ({
+            "median_average_power_w": estimate,
+            "samples": most_specific[2],
+            "median_energy_joules": levels[-1][0].get("median_energy_joules"),
+            "median_runtime_seconds": levels[-1][0].get("median_runtime_seconds"),
+            "contributing_levels": contributing_levels,
+        }, most_specific[0], most_specific[1])
 
     def read_rapl_counters(self):
         """Read package energy counters exposed by Linux powercap/RAPL."""
@@ -271,6 +301,8 @@ class EcoProfiler:
                 "model_samples": baseline["samples"],
                 "model_median_energy_j": baseline["median_energy_joules"],
                 "model_median_runtime_s": baseline["median_runtime_seconds"],
+                "estimator": "hierarchical grouped median with sparse-group shrinkage",
+                "contributing_groups": baseline.get("contributing_levels", []),
             }
         else:
             total_estimated_energy = (cpu_percent * DEFAULT_TDP * total_time) * CALIBRATION_COEFFICIENT

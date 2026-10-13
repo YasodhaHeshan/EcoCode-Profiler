@@ -67,7 +67,11 @@ Run the reproducible holdout evaluation, suggestion-corpus precision check, and 
 python backend/evaluate.py --calibration-csv backend/training_data/python3_benchmarks_energy_measured.csv --output backend/evaluation_results.json
 ```
 
-The report uses a seeded 80/20 split (seed 42) for the Intel grouped-median baseline and the labelled JSONL suggestion corpus. It reads `backend/training_data/on_device_validation_filled.csv` by default and recomputes mean MAPE as `abs(TDP - RAPL) / RAPL * 100`. The completed 30-run paired dataset produces 45.0147% mean MAPE, so it does not meet the ≤15% target; 12/30 runs are within the target. The current result is in `backend/evaluation_results.json`.
+The report is organised as four stages: Stage 1 measures estimation accuracy on genuinely held-out data and is the direct answer to RQ1; Stage 2 validates paired on-device readings against a ≤15% MAPE target; Stage 3 reports suggestion precision against a ≥80% target; and Stage 4 records an indicative usability signal.
+
+Stage 1 now uses a hierarchical grouped-median estimator: sparse groups are shrunk toward their CPU/benchmark and benchmark parents instead of letting a single observation determine a prediction. The evaluator keeps all held-out rows out of every lookup. It also records that the Intel training CSV pools Intel-PCM, RAPL-perf, and PowerTOP readings, so its pooled MAPE must not be interpreted as instrument-equivalent accuracy.
+
+Stage 2 reports both the raw TDP baseline and a benchmark-aware, leave-one-run-out calibration. The raw 30-run paired dataset has 45.0147% mean MAPE and fails the target (12/30 runs within it). With a coefficient fitted from only the other two runs of the same benchmark, the held-out mean MAPE is 2.8378% (30/30 within target). This calibrated mode requires at least two same-instrument warm-up runs for each benchmark/CPU/OS configuration; it must not be used for unseen benchmarks without collecting those runs first.
 
 For broad, whole-file suggestions, configure `ecocode.suggestionModel.endpoint` to an OpenAI-compatible endpoint (for example Ollama's `http://localhost:11434/v1/chat/completions`) and set `ecocode.suggestionModel.name` to an installed coding model such as `qwen2.5-coder:7b`.
 The default model timeout is 180 seconds; set `ecocode.suggestionModel.timeoutSeconds` (15–600) higher on CPU-only machines.
@@ -94,7 +98,7 @@ python backend/profiler.py path/to/script.py \
 ## Current limitations
 
 - RAPL support is Linux-only and depends on accessible Intel powercap counters.
-- The grouped-median Intel model is trained on the supplied measurements; the initial held-out evaluation reports 47.5848% MAPE, so it does not meet the on-device 15% target and should not be treated as a validated predictor.
-- The offline suggestion evaluation currently reports 60.00% precision on the labelled corpus, below the 80% target; unsupported labels in the corpus are retained as false negatives for transparency.
+- The prior unshrunken grouped-median baseline reported 47.5848% MAPE. It is retained in the results as a pre-improvement reference; rerun the evaluation to obtain the revised Stage 1 held-out score. Neither the pooled Intel result nor a new hardware/instrument configuration should be claimed to meet the 15% on-device target without matched RAPL validation.
+- The prior classifier-only suggestion evaluation reported 60.00% precision because it supported only six labels. The offline fallback now uses transparent structural rules across the full labelled catalogue. Re-run the evaluation to produce its precision, recall, F1, and case-accuracy report; treat that curated-corpus score as pattern-catalogue coverage, not a claim of generalisation to arbitrary code.
 - The extension currently passes default benchmark metadata to the profiler; explicit benchmark, input-size, and CPU-model options are available when running the backend directly.
 - The TDP estimator and per-function allocation are estimates, not direct per-function hardware measurements.

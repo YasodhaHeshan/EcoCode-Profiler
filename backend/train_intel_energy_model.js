@@ -60,10 +60,12 @@ const model = {
   measurement_domain: 'package energy',
   cpu_generations: [...new Set(rows.map(r => r.cpu_generation))].sort(),
   energy_sources: [...new Set(rows.map(r => r.energy_source))].sort(),
+  sparse_group_shrinkage_samples: 3,
+  global: summarize(rows),
   by_benchmark: groupBy(r => r.benchmark_name),
   by_cpu_model_and_benchmark: groupBy(r => `${r.cpu_model}|${r.benchmark_name}`),
   by_cpu_model_benchmark_and_input_size: groupBy(r => `${r.cpu_model}|${r.benchmark_name}|${r.input_size}`),
-  limitations: 'Grouped median lookup baseline trained on supplied measurements. It is not a regression model; predictions are supported only for matching benchmark and CPU keys, and input sizes must match for the most specific lookup. Dataset has mixed measurement sources and operating systems.',
+  limitations: 'Hierarchical grouped-median lookup baseline trained on supplied measurements. Sparse groups are shrunk toward parent groups using three pseudo-samples. It is not a regression model; predictions are supported only for matching benchmark and CPU keys. Dataset has mixed measurement sources and operating systems, which are retained as provenance rather than treated as interchangeable.',
 };
 fs.writeFileSync(outputPath, JSON.stringify(model, null, 2) + '\n');
 console.log(JSON.stringify({ rows: rows.length, benchmarks: Object.keys(model.by_benchmark).length, cpu_models: new Set(rows.map(r => r.cpu_model)).size, model: outputPath }, null, 2));

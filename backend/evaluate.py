@@ -37,6 +37,13 @@ def read_measurements(path):
 
 
 def train_lookup(rows):
+    """Build a hierarchical lookup model.
+
+    A single measurement is a poor median.  Keeping the sample count lets the
+    predictor shrink sparse, highly-specific groups toward their parent group
+    instead of treating one observation (possibly from another instrument) as
+    ground truth.
+    """
     groups = {}
     for row in rows:
         for key in (
@@ -48,20 +55,40 @@ def train_lookup(rows):
             group_key = tuple(row[field] for field in key)
             groups.setdefault(key, {}).setdefault(group_key, []).append(row["power_w"])
     return {
-        key: {group_key: median(values) for group_key, values in values_by_key.items()}
+        key: {
+            group_key: {"median": median(values), "samples": len(values)}
+            for group_key, values in values_by_key.items()
+        }
         for key, values_by_key in groups.items()
     }
 
 
-def predict_power(model, row):
-    for fields in (("cpu_model", "benchmark_name", "input_size"), ("cpu_model", "benchmark_name"), ("benchmark_name",), ()):
+def predict_power(model, row, shrinkage_samples=3):
+    """Predict power with empirical-Bayes shrinkage for sparse groups.
+
+    The estimate at each level is blended with its parent.  Thus a group with
+    one observation still contributes signal but cannot dominate the estimate.
+    """
+    hierarchy = (("cpu_model", "benchmark_name", "input_size"),
+                 ("cpu_model", "benchmark_name"), ("benchmark_name",), ())
+    estimate = None
+    level = None
+    for fields in reversed(hierarchy):
         key = tuple(row[field] for field in fields)
-        if key in model[fields]:
-            return model[fields][key], "+".join(fields) or "global"
-    return None, None
+        group = model[fields].get(key)
+        if not group:
+            continue
+        if estimate is None:
+            estimate = group["median"]
+            level = "+".join(fields) or "global"
+            continue
+        weight = group["samples"] / (group["samples"] + shrinkage_samples)
+        estimate = weight * group["median"] + (1 - weight) * estimate
+        level = "+".join(fields)
+    return estimate, level
 
 
-def evaluate_intel(path, test_fraction, seed):
+def evaluate_intel(path, test_fraction, seed, target_mape=15.0):
     rows = read_measurements(path)
     if len(rows) < 2:
         raise ValueError("At least two Intel measurements are required")
@@ -90,8 +117,12 @@ def evaluate_intel(path, test_fraction, seed):
         "mae_joules": round(statistics.mean(abs(error) for error in errors), 6) if errors else None,
         "rmse_joules": round((statistics.mean(error * error for error in errors)) ** 0.5, 6) if errors else None,
         "mape_percent": round(statistics.mean(absolute_percentage_errors), 4) if errors else None,
+        "target_mape_percent": target_mape,
+        "target_met": bool(errors) and statistics.mean(absolute_percentage_errors) <= target_mape,
         "match_levels": levels,
-        "split": {"test_fraction": test_fraction, "seed": seed, "method": "random holdout"},
+        "split": {"test_fraction": test_fraction, "seed": seed, "method": "seeded random holdout; test rows excluded from every lookup"},
+        "estimator": "hierarchical grouped median with sparse-group shrinkage (3 pseudo-samples)",
+        "instrument_note": "The source CSV pools Intel-PCM, RAPL-perf, and PowerTOP readings. MAPE is reported over the pooled data; it is not evidence that those instruments are interchangeable.",
     }
 
 
@@ -120,6 +151,28 @@ def evaluate_on_device(path, target_mape=15.0):
         benchmark: round(statistics.mean(values), 4)
         for benchmark, values in sorted(errors_by_benchmark.items())
     }
+    # A benchmark-specific coefficient is fit only from the other runs of the
+    # same benchmark. This is a genuine leave-one-run-out prediction, rather
+    # than fitting and scoring a run on itself. It makes the calibration
+    # requirement explicit: a new benchmark needs at least two warm-up runs.
+    calibrated_errors = []
+    calibrated_by_benchmark = {}
+    for benchmark, benchmark_rows in sorted(
+        ((name, [row for row in rows if row["benchmark"] == name])
+         for name in errors_by_benchmark), key=lambda item: item[0]):
+        if len(benchmark_rows) < 3:
+            continue
+        for index, held_out in enumerate(benchmark_rows):
+            training = benchmark_rows[:index] + benchmark_rows[index + 1:]
+            coefficient = median(
+                float(item["rapl_energy_j"]) / float(item["tdp_estimated_energy_j"])
+                for item in training
+            )
+            predicted = coefficient * float(held_out["tdp_estimated_energy_j"])
+            error = abs(predicted - float(held_out["rapl_energy_j"])) / float(held_out["rapl_energy_j"]) * 100
+            calibrated_errors.append(error)
+            calibrated_by_benchmark.setdefault(benchmark, []).append(error)
+    calibrated_mape = statistics.mean(calibrated_errors) if calibrated_errors else None
     return {
         "status": "complete",
         "source": os.path.basename(path),
@@ -133,6 +186,18 @@ def evaluate_on_device(path, target_mape=15.0):
         "runs_within_target": sum(error <= target_mape for error in errors),
         "benchmark_mean_mape_percent": benchmark_mape,
         "method": "mean absolute percentage error: abs(TDP - RAPL) / RAPL * 100",
+        "benchmark_calibrated_leave_one_run_out": {
+            "status": "complete" if calibrated_errors else "insufficient_replicates",
+            "rows": len(calibrated_errors),
+            "mean_mape_percent": round(calibrated_mape, 4) if calibrated_mape is not None else None,
+            "median_mape_percent": round(statistics.median(calibrated_errors), 4) if calibrated_errors else None,
+            "target_mape_percent": target_mape,
+            "target_met": bool(calibrated_errors) and calibrated_mape <= target_mape,
+            "runs_within_target": sum(error <= target_mape for error in calibrated_errors),
+            "benchmark_mean_mape_percent": {key: round(statistics.mean(value), 4) for key, value in calibrated_by_benchmark.items()},
+            "method": "leave-one-run-out median(RAPL/TDP) benchmark calibration; the held-out run is never used to fit its coefficient",
+            "deployment_requirement": "Collect at least two same-instrument warm-up runs for each benchmark/CPU/OS configuration before using the calibrated estimate.",
+        },
     }
 
 
@@ -166,13 +231,21 @@ def evaluate_suggestions(cases_path, model_path):
             stats["correct_cases"] += int(correct)
             stats["predicted_suggestions"] += len(predicted)
     total_predictions = true_positives + false_positives
+    precision = true_positives / total_predictions if total_predictions else None
+    recall_denominator = true_positives + false_negatives
+    recall = true_positives / recall_denominator if recall_denominator else None
+    f1_score = 2 * precision * recall / (precision + recall) if precision and recall else 0.0
     return {
         "status": "complete",
         "cases": len(cases),
         "true_positives": true_positives,
         "false_positives": false_positives,
         "false_negatives": false_negatives,
-        "precision_percent": round(100 * true_positives / total_predictions, 2) if total_predictions else None,
+        "precision_percent": round(100 * precision, 2) if precision is not None else None,
+        "target_precision_percent": 80.0,
+        "target_met": bool(precision) and 100 * precision >= 80.0,
+        "recall_percent": round(100 * recall, 2) if recall is not None else None,
+        "f1_score_percent": round(100 * f1_score, 2),
         "case_accuracy_percent": round(100 * sum(item["correct_cases"] for item in by_label.values()) / len(cases), 2) if cases else None,
         "by_label": by_label,
         "corpus": os.path.basename(cases_path),
@@ -221,11 +294,17 @@ def main():
     parser.add_argument("--output", help="Write the JSON report to this path")
     args = parser.parse_args()
     report = {
-        "intel_grouped_median_holdout": evaluate_intel(args.intel_csv, args.test_fraction, args.seed),
-        "suggestion_precision": evaluate_suggestions(args.suggestion_cases, args.suggestion_model),
+        "evaluation_protocol": {
+            "stage_1": "Estimation accuracy on genuinely held-out Intel measurement rows; direct answer to RQ1.",
+            "stage_2": "Paired on-device RAPL validation against a <= 15% MAPE target; raw and leave-one-run-out calibrated estimates are both reported.",
+            "stage_3": "Offline suggestion precision against a >= 80% target.",
+            "stage_4": "Indicative usability signal; not a substitute for a participant study.",
+        },
+        "stage_1_estimation_accuracy": evaluate_intel(args.intel_csv, args.test_fraction, args.seed),
+        "stage_3_suggestion_precision": evaluate_suggestions(args.suggestion_cases, args.suggestion_model),
         "offline_calibration": evaluate_calibration(args.calibration_csv, args.calibration_tdp) if args.calibration_csv else {"status": "pending", "reason": "Energy-Languages CSV not supplied"},
-        "on_device_rapl_vs_tdp": evaluate_on_device(args.on_device_csv),
-        "usability_assessment": {"status": "pending", "reason": "Requires developer participants and Likert responses"},
+        "stage_2_on_device_rapl_validation": evaluate_on_device(args.on_device_csv),
+        "stage_4_usability_assessment": {"status": "pending", "reason": "Indicative usability requires developer participants and a pre-specified Likert questionnaire"},
     }
     serialized = json.dumps(report, indent=2)
     if args.output:

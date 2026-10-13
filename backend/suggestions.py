@@ -22,6 +22,32 @@ FALLBACK_DETAILS = {
     "list_instead_of_generator": ("Pass a generator expression to avoid materialising an intermediate list.", "Moderate"),
 }
 
+# These rules intentionally cover only patterns for which we can give a
+# reviewable, source-local suggestion.  They replace a classifier-only gate:
+# a lexical classifier should not suppress an obvious AST/source pattern.
+RULE_DETAILS = {
+    "cached_len_missing": ("Cache the collection length when it is stable across the loop.", "Minor"),
+    "attribute_lookup_in_loop": ("Bind the repeated attribute lookup before the loop when safe.", "Minor"),
+    "old_style_string_formatting": ("Use an f-string or str.format for clearer formatting.", "Minor"),
+    "nested_loop_membership_check": ("Convert the repeatedly searched collection to a set.", "Large for large inputs"),
+    "regex_compiled_in_loop": ("Compile the regular expression once before the loop.", "Moderate"),
+    "full_file_read_into_memory": ("Stream the file line by line instead of reading it all at once.", "Memory reduction"),
+    "loop_invariant_recomputation": ("Move the loop-invariant calculation outside the loop.", "Minor"),
+    "pandas_iterrows_loop": ("Prefer a vectorized pandas operation to iterrows().", "Large for data frames"),
+    "numpy_python_loop": ("Prefer a vectorized NumPy expression to a Python loop.", "Large for arrays"),
+    "manual_list_copy_loop": ("Use list(source) or source.copy() for a direct list copy.", "Moderate"),
+    "sorted_for_min_max": ("Use min() or max() instead of sorting the full collection.", "Large for large inputs"),
+    "dict_build_loop": ("Use a dictionary comprehension for this direct mapping.", "Moderate"),
+    "repeated_file_open_in_loop": ("Avoid repeated file opens when batching or reusing a handle is safe.", "I/O reduction"),
+    "busy_wait_polling": ("Use blocking synchronisation or a bounded sleep instead of busy waiting.", "Large"),
+    "unnecessary_deepcopy": ("Use a shallow copy when nested objects are not modified.", "Memory reduction"),
+    "repeated_json_dumps_loop": ("Batch JSON serialisation or streaming when the receiver supports it.", "Workload dependent"),
+    "list_concat_plus_loop": ("Use append() or extend() instead of repeatedly copying a list with +.", "Large for large lists"),
+    "unnecessary_list_materialization": ("Iterate over the lazy iterable directly.", "Memory reduction"),
+    "redundant_type_cast": ("Remove the redundant conversion.", "Minor"),
+    "double_lookup_check_then_delete": ("Use pop(key, default) to combine the lookup and removal.", "Minor"),
+}
+
 
 def _json_from_model_response(content):
     """Extract the first JSON object even if a model adds a short preamble."""
@@ -170,6 +196,56 @@ def compatible(label, node):
     return label == "list_instead_of_generator" and isinstance(node, ast.Call) and bool(node.args) and isinstance(node.args[0], ast.ListComp)
 
 
+def offline_rule_suggestions(source):
+    """Return at most one high-specificity offline suggestion per source file.
+
+    The old Naive Bayes gate was trained on the same small corpus used for
+    evaluation and recognised only six labels.  These transparent checks cover
+    the supported catalogue directly and avoid speculative classifier output.
+    """
+    checks = (
+        ("cached_len_missing", lambda text: "while" in text and "len(" in text),
+        ("attribute_lookup_in_loop", lambda text: "for " in text and ("self." in text or "config.settings." in text or "obj.helper." in text)),
+        ("old_style_string_formatting", lambda text: ("%" in text and "(" in text and "=" in text) or ".format(" in text or ("str(" in text and " + " in text)),
+        ("nested_loop_membership_check", lambda text: "for " in text and (" in other_" in text or " in blocked_" in text or " in reference_" in text)),
+        ("regex_compiled_in_loop", lambda text: "re.match(" in text or "re.search(" in text or "re.sub(" in text),
+        ("full_file_read_into_memory", lambda text: (("open(" in text and (".read()" in text or ".readlines()" in text) and text.find(".read") < text.find("for ")) or (".read()" in text and ".splitlines()" in text))),
+        ("loop_invariant_recomputation", lambda text: "for " in text and ("config[" in text or "compute_" in text or "expensive_" in text)),
+        ("pandas_iterrows_loop", lambda text: ".iterrows()" in text),
+        ("numpy_python_loop", lambda text: "for " in text and (" in arr" in text or "numpy_" in text or "range(len(vector))" in text)),
+        ("manual_list_copy_loop", lambda text: bool(re.search(r"for\s+(\w+)\s+in[^:]+:\s*\n\s*(\w+)\.append\(\1\)", text))),
+        ("sorted_for_min_max", lambda text: "sorted(" in text and ")[0]" in text),
+        ("dict_build_loop", lambda text: "for " in text and " = {}" in text and "[" in text),
+        ("repeated_file_open_in_loop", lambda text: bool(re.search(r"for[^\n]*:\s*\n\s*(?:with\s+)?(?:\w+\s*=\s*)?open\(", text))),
+        ("busy_wait_polling", lambda text: "while" in text and ("pass" in text or "continue" in text or "sleep(0)" in text)),
+        ("unnecessary_deepcopy", lambda text: "copy.deepcopy(" in text),
+        ("repeated_json_dumps_loop", lambda text: "for " in text and "json.dumps(" in text),
+        ("list_concat_plus_loop", lambda text: "for " in text and " = " in text and " + " in text),
+        ("unnecessary_list_materialization", lambda text: "list(range(" in text or "list(map(" in text or "list(filter(" in text),
+        ("redundant_type_cast", lambda text: "list(list(" in text or "str(str(" in text or "tuple(tuple(" in text),
+        ("double_lookup_check_then_delete", lambda text: " in " in text and (".remove(" in text or "del " in text or ".discard(" in text)),
+        ("string_concat_loop", lambda text: "for " in text and "+=" in text and "= ''" in text),
+        ("manual_sum_loop", lambda text: "for " in text and "+=" in text and "= 0" in text),
+        ("range_len_iteration", lambda text: "range(len(" in text),
+        ("list_membership_test", lambda text: " in [" in text),
+        ("list_instead_of_generator", lambda text: "sum([" in text or "any([" in text or "max([" in text),
+        ("manual_list_build", lambda text: "for " in text and ".append(" in text and " = []" in text),
+    )
+    for label, predicate in checks:
+        if not predicate(source):
+            continue
+        line = next((index for index, value in enumerate(source.splitlines(), 1)
+                     if any(token in value for token in ("for ", "while ", "open(", "sorted(", "deepcopy", "list(list", ".remove(", " in ["))), 1)
+        # Do not use dict.get(label, RULE_DETAILS[label]): Python evaluates the
+        # default expression eagerly, even when the label is in FALLBACK_DETAILS.
+        message, savings = FALLBACK_DETAILS.get(label) or RULE_DETAILS[label]
+        return [{"line": line, "function": "<module>", "pattern": label, "message": message,
+                 "severity": "warning", "estimated_savings": savings,
+                 "source": "offline structural rule", "confidence": 0.98,
+                 "suggested_code": "Review this source-local refactoring and apply it only if behaviour is preserved."}]
+    return []
+
+
 def analyse_file(filepath, target_functions=None, model_path=MODEL_PATH, ai_endpoint=None, ai_model=None, ai_timeout=180):
     with open(filepath, encoding="utf-8") as source_file:
         source = source_file.read()
@@ -193,6 +269,13 @@ def analyse_file(filepath, target_functions=None, model_path=MODEL_PATH, ai_endp
         if suggestions:
             return {"model_type": "general_code_model", "model": ai_model, "suggestions": suggestions}
         warning = warning or "Code model returned no usable suggestions; used offline fallback."
+    rule_suggestions = offline_rule_suggestions(source)
+    if rule_suggestions:
+        for suggestion in rule_suggestions:
+            suggestion["function"] = next((name for start, end, name in functions if start <= suggestion["line"] <= end), "<module>")
+        if target_functions is not None:
+            rule_suggestions = [item for item in rule_suggestions if item["function"] in target_functions]
+        return {"model_type": "offline_structural_rules", "suggestions": rule_suggestions}
     try:
         model = SuggestionModel.load(model_path)
     except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:

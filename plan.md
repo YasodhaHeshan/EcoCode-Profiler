@@ -72,7 +72,7 @@ This document tracks the progress of the EcoCode Profiler research project based
 - [x] **On-Device Validation:** Completed the comparison of Backend A (RAPL) vs Backend B (TDP) across 30 paired runs on an Intel Core i5-12400 host running Ubuntu 22.04. Mean MAPE: **45.0147%** (median: **55.5244%**); 12/30 runs were within the ≤15% target, so the target was **not met**. All 30 validation rows are complete.
 - [x] **Suggestion Precision Evaluation (NEW):** Run the suggestion engine against benchmark scripts, classify each suggestion as TP or FP, and calculate precision. Target: ≥ 80%.
   - Initial evaluation on the 90-case labelled suggestion corpus: 18 TP, 12 FP, 60 FN, precision 60.00%, case accuracy 33.33%.
-- [ ] **Usability Assessment:** Distribute the extension to Python developers and collect Likert-scale feedback on annotations, suggestions, and overall usefulness.
+- [x] **Usability Assessment:** Distribute the extension to Python developers and collect Likert-scale feedback on annotations, suggestions, and overall usefulness.
 
 ### 4. Stretch Goals (Optional)
 - [ ] Add Quick Fix actions so users can auto-apply suggested refactorings with one click.

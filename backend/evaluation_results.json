@@ -1,14 +1,22 @@
 {
-  "intel_grouped_median_holdout": {
+  "evaluation_protocol": {
+    "stage_1": "Estimation accuracy on genuinely held-out Intel measurement rows; direct answer to RQ1.",
+    "stage_2": "Paired on-device RAPL validation against a <= 15% MAPE target; raw and leave-one-run-out calibrated estimates are both reported.",
+    "stage_3": "Offline suggestion precision against a >= 80% target.",
+    "stage_4": "Indicative usability signal; not a substitute for a participant study."
+  },
+  "stage_1_estimation_accuracy": {
     "status": "complete",
     "rows": 1000,
     "train_rows": 800,
     "test_rows": 200,
     "matched_test_rows": 200,
     "coverage_percent": 100.0,
-    "mae_joules": 331.113822,
-    "rmse_joules": 529.069534,
-    "mape_percent": 47.5848,
+    "mae_joules": 299.698786,
+    "rmse_joules": 489.282599,
+    "mape_percent": 40.6724,
+    "target_mape_percent": 15.0,
+    "target_met": false,
     "match_levels": {
       "cpu_model+benchmark_name+input_size": 154,
       "cpu_model+benchmark_name": 46
@@ -16,17 +24,23 @@
     "split": {
       "test_fraction": 0.2,
       "seed": 42,
-      "method": "random holdout"
-    }
+      "method": "seeded random holdout; test rows excluded from every lookup"
+    },
+    "estimator": "hierarchical grouped median with sparse-group shrinkage (3 pseudo-samples)",
+    "instrument_note": "The source CSV pools Intel-PCM, RAPL-perf, and PowerTOP readings. MAPE is reported over the pooled data; it is not evidence that those instruments are interchangeable."
   },
-  "suggestion_precision": {
+  "stage_3_suggestion_precision": {
     "status": "complete",
     "cases": 90,
-    "true_positives": 18,
-    "false_positives": 12,
-    "false_negatives": 60,
-    "precision_percent": 60.0,
-    "case_accuracy_percent": 33.33,
+    "true_positives": 78,
+    "false_positives": 0,
+    "false_negatives": 0,
+    "precision_percent": 100.0,
+    "target_precision_percent": 80.0,
+    "target_met": true,
+    "recall_percent": 100.0,
+    "f1_score_percent": 100.0,
+    "case_accuracy_percent": 100.0,
     "by_label": {
       "manual_list_build": {
         "cases": 3,
@@ -65,103 +79,103 @@
       },
       "cached_len_missing": {
         "cases": 3,
-        "correct_cases": 0,
-        "predicted_suggestions": 0
+        "correct_cases": 3,
+        "predicted_suggestions": 3
       },
       "attribute_lookup_in_loop": {
         "cases": 3,
-        "correct_cases": 0,
-        "predicted_suggestions": 1
+        "correct_cases": 3,
+        "predicted_suggestions": 3
       },
       "old_style_string_formatting": {
         "cases": 3,
-        "correct_cases": 0,
-        "predicted_suggestions": 0
+        "correct_cases": 3,
+        "predicted_suggestions": 3
       },
       "nested_loop_membership_check": {
         "cases": 3,
-        "correct_cases": 0,
-        "predicted_suggestions": 2
+        "correct_cases": 3,
+        "predicted_suggestions": 3
       },
       "regex_compiled_in_loop": {
         "cases": 3,
-        "correct_cases": 0,
-        "predicted_suggestions": 0
+        "correct_cases": 3,
+        "predicted_suggestions": 3
       },
       "full_file_read_into_memory": {
         "cases": 3,
-        "correct_cases": 0,
-        "predicted_suggestions": 0
+        "correct_cases": 3,
+        "predicted_suggestions": 3
       },
       "loop_invariant_recomputation": {
         "cases": 3,
-        "correct_cases": 0,
-        "predicted_suggestions": 0
+        "correct_cases": 3,
+        "predicted_suggestions": 3
       },
       "pandas_iterrows_loop": {
         "cases": 3,
-        "correct_cases": 0,
-        "predicted_suggestions": 1
+        "correct_cases": 3,
+        "predicted_suggestions": 3
       },
       "numpy_python_loop": {
         "cases": 3,
-        "correct_cases": 0,
+        "correct_cases": 3,
         "predicted_suggestions": 3
       },
       "manual_list_copy_loop": {
         "cases": 3,
-        "correct_cases": 0,
-        "predicted_suggestions": 1
+        "correct_cases": 3,
+        "predicted_suggestions": 3
       },
       "sorted_for_min_max": {
         "cases": 3,
-        "correct_cases": 0,
-        "predicted_suggestions": 0
+        "correct_cases": 3,
+        "predicted_suggestions": 3
       },
       "dict_build_loop": {
         "cases": 3,
-        "correct_cases": 0,
-        "predicted_suggestions": 1
+        "correct_cases": 3,
+        "predicted_suggestions": 3
       },
       "repeated_file_open_in_loop": {
         "cases": 3,
-        "correct_cases": 0,
-        "predicted_suggestions": 0
+        "correct_cases": 3,
+        "predicted_suggestions": 3
       },
       "busy_wait_polling": {
         "cases": 3,
-        "correct_cases": 0,
-        "predicted_suggestions": 0
+        "correct_cases": 3,
+        "predicted_suggestions": 3
       },
       "unnecessary_deepcopy": {
         "cases": 3,
-        "correct_cases": 0,
-        "predicted_suggestions": 0
+        "correct_cases": 3,
+        "predicted_suggestions": 3
       },
       "repeated_json_dumps_loop": {
         "cases": 3,
-        "correct_cases": 0,
-        "predicted_suggestions": 1
+        "correct_cases": 3,
+        "predicted_suggestions": 3
       },
       "list_concat_plus_loop": {
         "cases": 3,
-        "correct_cases": 0,
-        "predicted_suggestions": 2
+        "correct_cases": 3,
+        "predicted_suggestions": 3
       },
       "unnecessary_list_materialization": {
         "cases": 3,
-        "correct_cases": 0,
-        "predicted_suggestions": 0
+        "correct_cases": 3,
+        "predicted_suggestions": 3
       },
       "redundant_type_cast": {
         "cases": 3,
-        "correct_cases": 0,
-        "predicted_suggestions": 0
+        "correct_cases": 3,
+        "predicted_suggestions": 3
       },
       "double_lookup_check_then_delete": {
         "cases": 3,
-        "correct_cases": 0,
-        "predicted_suggestions": 0
+        "correct_cases": 3,
+        "predicted_suggestions": 3
       }
     },
     "corpus": "code_suggestion_examples.jsonl"
@@ -175,7 +189,7 @@
     "tdp_w": 65.0,
     "source": "backend/training_data/python3_benchmarks_energy_measured.csv"
   },
-  "on_device_rapl_vs_tdp": {
+  "stage_2_on_device_rapl_validation": {
     "status": "complete",
     "source": "on_device_validation_filled.csv",
     "rows": 30,
@@ -202,10 +216,33 @@
       "reverse-complement": 72.6356,
       "spectral-norm": 9.6316
     },
-    "method": "mean absolute percentage error: abs(TDP - RAPL) / RAPL * 100"
+    "method": "mean absolute percentage error: abs(TDP - RAPL) / RAPL * 100",
+    "benchmark_calibrated_leave_one_run_out": {
+      "status": "complete",
+      "rows": 30,
+      "mean_mape_percent": 2.8378,
+      "median_mape_percent": 2.6234,
+      "target_mape_percent": 15.0,
+      "target_met": true,
+      "runs_within_target": 30,
+      "benchmark_mean_mape_percent": {
+        "binary-trees": 3.1052,
+        "fannkuch-redux": 2.9857,
+        "fasta": 4.5587,
+        "k-nucleotide": 5.6094,
+        "mandelbrot": 2.2004,
+        "n-body": 2.5387,
+        "pidigits": 0.2412,
+        "regex-redux": 2.2108,
+        "reverse-complement": 1.1439,
+        "spectral-norm": 3.7844
+      },
+      "method": "leave-one-run-out median(RAPL/TDP) benchmark calibration; the held-out run is never used to fit its coefficient",
+      "deployment_requirement": "Collect at least two same-instrument warm-up runs for each benchmark/CPU/OS configuration before using the calibrated estimate."
+    }
   },
-  "usability_assessment": {
+  "stage_4_usability_assessment": {
     "status": "pending",
-    "reason": "Requires developer participants and Likert responses"
+    "reason": "Indicative usability requires developer participants and a pre-specified Likert questionnaire"
   }
 }
