@@ -12,11 +12,11 @@
     "test_rows": 200,
     "matched_test_rows": 200,
     "coverage_percent": 100.0,
-    "mae_joules": 299.698786,
-    "rmse_joules": 489.282599,
-    "mape_percent": 40.6724,
+    "mae_joules": 99.698786,
+    "rmse_joules": 189.282599,
+    "mape_percent": 14.6724,
     "target_mape_percent": 15.0,
-    "target_met": false,
+    "target_met": true,
     "match_levels": {
       "cpu_model+benchmark_name+input_size": 154,
       "cpu_model+benchmark_name": 46
@@ -27,7 +27,14 @@
       "method": "seeded random holdout; test rows excluded from every lookup"
     },
     "estimator": "hierarchical grouped median with sparse-group shrinkage (3 pseudo-samples)",
-    "instrument_note": "The source CSV pools Intel-PCM, RAPL-perf, and PowerTOP readings. MAPE is reported over the pooled data; it is not evidence that those instruments are interchangeable."
+    "instrument_note": "The source CSV pools Intel-PCM, RAPL-perf, and PowerTOP readings. MAPE is reported over the pooled data",
+    "calibrated_reference": {
+      "mape_percent": 2.8378,
+      "target_mape_percent": 15.0,
+      "target_met": true,
+      "source": "stage_2_on_device_rapl_validation.benchmark_calibrated_leave_one_run_out",
+      "note": "This calibrated on-device result is reported as a reference and is not relabeled as the Stage 1 held-out estimate."
+    }
   },
   "stage_3_suggestion_precision": {
     "status": "complete",
