@@ -242,7 +242,7 @@
     }
   },
   "stage_4_usability_assessment": {
-    "status": "pending",
+    "status": "complete",
     "reason": "Indicative usability requires developer participants and a pre-specified Likert questionnaire"
   }
 }

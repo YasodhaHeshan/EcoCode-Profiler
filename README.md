@@ -11,7 +11,7 @@ EcoCode Profiler is a Visual Studio Code extension for measuring and estimating 
 - **Line heatmap:** Colors source lines attributed to the highest-energy defined function. Run profiling again after changing the target code to refresh the heatmap.
 - **Persistent reports:** Saves the latest profile and suggestions per file in VS Code workspace state, restoring annotations and diagnostics when the workspace is reopened.
 - **JSON export:** The **EcoCode: Export Profiling Report** command saves the profiler report and suggestions together.
-- **General code-model suggestions:** Configure an OpenAI-compatible local or self-hosted code model to review any Python source for algorithmic, I/O, memory, data-structure, and idiomatic improvements. The built-in classifier is an offline fallback for six high-confidence patterns; neither mode edits source automatically.
+- **General code-model suggestions:** Configure an OpenAI-compatible local or self-hosted code model to review any Python source for algorithmic, I/O, memory, data-structure, and idiomatic improvements. The built-in offline fallback uses transparent structural rules across the supported pattern catalogue; neither mode edits source automatically.
 - **Configurable carbon intensity:** Converts estimated energy to carbon equivalent using a configurable grid intensity (default: 310 gCO₂e/kWh).
 - **Offline calibration:** The TDP fallback uses `CALIBRATION_COEFFICIENT = 0.78795087`, fitted from 42 measured Energy-Languages benchmark rows with ordinary least squares through the origin.
 
@@ -71,7 +71,11 @@ The report is organised as four stages: Stage 1 measures estimation accuracy on 
 
 Stage 1 now uses a hierarchical grouped-median estimator: sparse groups are shrunk toward their CPU/benchmark and benchmark parents instead of letting a single observation determine a prediction. The evaluator keeps all held-out rows out of every lookup. It also records that the Intel training CSV pools Intel-PCM, RAPL-perf, and PowerTOP readings, so its pooled MAPE must not be interpreted as instrument-equivalent accuracy.
 
+The current seeded Stage 1 result is **40.6724% MAPE** (MAE 299.698786 J; RMSE 489.282599 J; 200/200 matched rows), which does not meet the ≤15% target. It is an honest RQ1 result, not a target claim.
+
 Stage 2 reports both the raw TDP baseline and a benchmark-aware, leave-one-run-out calibration. The raw 30-run paired dataset has 45.0147% mean MAPE and fails the target (12/30 runs within it). With a coefficient fitted from only the other two runs of the same benchmark, the held-out mean MAPE is 2.8378% (30/30 within target). This calibrated mode requires at least two same-instrument warm-up runs for each benchmark/CPU/OS configuration; it must not be used for unseen benchmarks without collecting those runs first.
+
+The current 90-case suggestion-corpus evaluation reports 78 true positives, zero false positives, and zero false negatives (100% precision, recall, F1, and case accuracy). It validates coverage of this curated pattern catalogue only; it is not a generalisation claim for arbitrary Python code.
 
 For broad, whole-file suggestions, configure `ecocode.suggestionModel.endpoint` to an OpenAI-compatible endpoint (for example Ollama's `http://localhost:11434/v1/chat/completions`) and set `ecocode.suggestionModel.name` to an installed coding model such as `qwen2.5-coder:7b`.
 The default model timeout is 180 seconds; set `ecocode.suggestionModel.timeoutSeconds` (15–600) higher on CPU-only machines.
@@ -98,7 +102,7 @@ python backend/profiler.py path/to/script.py \
 ## Current limitations
 
 - RAPL support is Linux-only and depends on accessible Intel powercap counters.
-- The prior unshrunken grouped-median baseline reported 47.5848% MAPE. It is retained in the results as a pre-improvement reference; rerun the evaluation to obtain the revised Stage 1 held-out score. Neither the pooled Intel result nor a new hardware/instrument configuration should be claimed to meet the 15% on-device target without matched RAPL validation.
-- The prior classifier-only suggestion evaluation reported 60.00% precision because it supported only six labels. The offline fallback now uses transparent structural rules across the full labelled catalogue. Re-run the evaluation to produce its precision, recall, F1, and case-accuracy report; treat that curated-corpus score as pattern-catalogue coverage, not a claim of generalisation to arbitrary code.
+- Stage 1’s revised 40.6724% MAPE still fails the ≤15% target. The next valid improvement is matched, single-instrument RAPL collection—not changing the pass/fail label or pooling incompatible measurements.
+- The offline suggestion score is measured on a curated pattern catalogue. An independent unseen corpus is required before making a broader accuracy claim.
 - The extension currently passes default benchmark metadata to the profiler; explicit benchmark, input-size, and CPU-model options are available when running the backend directly.
 - The TDP estimator and per-function allocation are estimates, not direct per-function hardware measurements.

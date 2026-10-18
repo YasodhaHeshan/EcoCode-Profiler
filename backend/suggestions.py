@@ -197,53 +197,65 @@ def compatible(label, node):
 
 
 def offline_rule_suggestions(source):
-    """Return at most one high-specificity offline suggestion per source file.
+    """Find every supported, source-local pattern at its actual AST location.
 
-    The old Naive Bayes gate was trained on the same small corpus used for
-    evaluation and recognised only six labels.  These transparent checks cover
-    the supported catalogue directly and avoid speculative classifier output.
+    Suggestions used to be selected by a file-wide text check.  That could
+    report a manual-sum warning on the first unrelated loop, and subsequent
+    function filtering then hid it entirely.  These checks deliberately emit
+    one diagnostic per concrete AST node instead.
     """
-    checks = (
-        ("cached_len_missing", lambda text: "while" in text and "len(" in text),
-        ("attribute_lookup_in_loop", lambda text: "for " in text and ("self." in text or "config.settings." in text or "obj.helper." in text)),
-        ("old_style_string_formatting", lambda text: ("%" in text and "(" in text and "=" in text) or ".format(" in text or ("str(" in text and " + " in text)),
-        ("nested_loop_membership_check", lambda text: "for " in text and (" in other_" in text or " in blocked_" in text or " in reference_" in text)),
-        ("regex_compiled_in_loop", lambda text: "re.match(" in text or "re.search(" in text or "re.sub(" in text),
-        ("full_file_read_into_memory", lambda text: (("open(" in text and (".read()" in text or ".readlines()" in text) and text.find(".read") < text.find("for ")) or (".read()" in text and ".splitlines()" in text))),
-        ("loop_invariant_recomputation", lambda text: "for " in text and ("config[" in text or "compute_" in text or "expensive_" in text)),
-        ("pandas_iterrows_loop", lambda text: ".iterrows()" in text),
-        ("numpy_python_loop", lambda text: "for " in text and (" in arr" in text or "numpy_" in text or "range(len(vector))" in text)),
-        ("manual_list_copy_loop", lambda text: bool(re.search(r"for\s+(\w+)\s+in[^:]+:\s*\n\s*(\w+)\.append\(\1\)", text))),
-        ("sorted_for_min_max", lambda text: "sorted(" in text and ")[0]" in text),
-        ("dict_build_loop", lambda text: "for " in text and " = {}" in text and "[" in text),
-        ("repeated_file_open_in_loop", lambda text: bool(re.search(r"for[^\n]*:\s*\n\s*(?:with\s+)?(?:\w+\s*=\s*)?open\(", text))),
-        ("busy_wait_polling", lambda text: "while" in text and ("pass" in text or "continue" in text or "sleep(0)" in text)),
-        ("unnecessary_deepcopy", lambda text: "copy.deepcopy(" in text),
-        ("repeated_json_dumps_loop", lambda text: "for " in text and "json.dumps(" in text),
-        ("list_concat_plus_loop", lambda text: "for " in text and " = " in text and " + " in text),
-        ("unnecessary_list_materialization", lambda text: "list(range(" in text or "list(map(" in text or "list(filter(" in text),
-        ("redundant_type_cast", lambda text: "list(list(" in text or "str(str(" in text or "tuple(tuple(" in text),
-        ("double_lookup_check_then_delete", lambda text: " in " in text and (".remove(" in text or "del " in text or ".discard(" in text)),
-        ("string_concat_loop", lambda text: "for " in text and "+=" in text and "= ''" in text),
-        ("manual_sum_loop", lambda text: "for " in text and "+=" in text and "= 0" in text),
-        ("range_len_iteration", lambda text: "range(len(" in text),
-        ("list_membership_test", lambda text: " in [" in text),
-        ("list_instead_of_generator", lambda text: "sum([" in text or "any([" in text or "max([" in text),
-        ("manual_list_build", lambda text: "for " in text and ".append(" in text and " = []" in text),
-    )
-    for label, predicate in checks:
-        if not predicate(source):
-            continue
-        line = next((index for index, value in enumerate(source.splitlines(), 1)
-                     if any(token in value for token in ("for ", "while ", "open(", "sorted(", "deepcopy", "list(list", ".remove(", " in ["))), 1)
-        # Do not use dict.get(label, RULE_DETAILS[label]): Python evaluates the
-        # default expression eagerly, even when the label is in FALLBACK_DETAILS.
-        message, savings = FALLBACK_DETAILS.get(label) or RULE_DETAILS[label]
-        return [{"line": line, "function": "<module>", "pattern": label, "message": message,
-                 "severity": "warning", "estimated_savings": savings,
-                 "source": "offline structural rule", "confidence": 0.98,
-                 "suggested_code": "Review this source-local refactoring and apply it only if behaviour is preserved."}]
-    return []
+    tree = ast.parse(source)
+    lines = source.splitlines()
+    suggestions, seen = [], set()
+
+    def initialized_before(name, value, line):
+        expression = re.compile(rf"^\s*{re.escape(name)}\s*=\s*{value}\s*$")
+        return any(expression.match(text) for text in lines[:line - 1])
+
+    def add(label, node):
+        key = (label, node.lineno)
+        if key in seen:
+            return
+        seen.add(key)
+        message, savings = FALLBACK_DETAILS[label]
+        suggestions.append({
+            "line": node.lineno,
+            "function": "<module>",
+            "pattern": label,
+            "message": message,
+            "severity": "warning",
+            "estimated_savings": savings,
+            "source": "offline structural rule",
+            "confidence": 0.98,
+            "suggested_code": replacement_for(label, node),
+        })
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.For):
+            for statement in node.body:
+                if not isinstance(statement, ast.AugAssign) or not isinstance(statement.op, ast.Add) or not isinstance(statement.target, ast.Name):
+                    continue
+                if initialized_before(statement.target.id, "0", node.lineno):
+                    add("manual_sum_loop", node)
+                elif initialized_before(statement.target.id, r"(?:''|\"\")", node.lineno):
+                    add("string_concat_loop", node)
+            if any(
+                isinstance(statement, ast.Expr)
+                and isinstance(statement.value, ast.Call)
+                and isinstance(statement.value.func, ast.Attribute)
+                and statement.value.func.attr == "append"
+                and isinstance(statement.value.func.value, ast.Name)
+                and initialized_before(statement.value.func.value.id, r"\[\]", node.lineno)
+                for statement in node.body
+            ):
+                add("manual_list_build", node)
+            if compatible("range_len_iteration", node):
+                add("range_len_iteration", node)
+        elif isinstance(node, ast.Compare) and compatible("list_membership_test", node):
+            add("list_membership_test", node)
+        elif isinstance(node, ast.Call) and compatible("list_instead_of_generator", node):
+            add("list_instead_of_generator", node)
+    return sorted(suggestions, key=lambda item: item["line"])
 
 
 def analyse_file(filepath, target_functions=None, model_path=MODEL_PATH, ai_endpoint=None, ai_model=None, ai_timeout=180):
@@ -269,13 +281,11 @@ def analyse_file(filepath, target_functions=None, model_path=MODEL_PATH, ai_endp
         if suggestions:
             return {"model_type": "general_code_model", "model": ai_model, "suggestions": suggestions}
         warning = warning or "Code model returned no usable suggestions; used offline fallback."
-    rule_suggestions = offline_rule_suggestions(source)
-    if rule_suggestions:
-        for suggestion in rule_suggestions:
-            suggestion["function"] = next((name for start, end, name in functions if start <= suggestion["line"] <= end), "<module>")
-        if target_functions is not None:
-            rule_suggestions = [item for item in rule_suggestions if item["function"] in target_functions]
-        return {"model_type": "offline_structural_rules", "suggestions": rule_suggestions}
+    # Keep the learned model as the default offline path.  Its diagnostics are
+    # the established editor experience: they identify the learned pattern and
+    # show a contextual rewrite (for example, a manual sum loop -> sum(...)).
+    # A file-wide rule gate here used to return early and suppressed those
+    # diagnostics before they reached VS Code.
     try:
         model = SuggestionModel.load(model_path)
     except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:

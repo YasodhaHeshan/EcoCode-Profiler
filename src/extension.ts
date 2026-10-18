@@ -101,6 +101,13 @@ export async function activate(context: vscode.ExtensionContext) {
     summaryProvider = new SummaryProvider();
     context.subscriptions.push(vscode.window.registerTreeDataProvider(SUMMARY_VIEW_ID, summaryProvider));
 
+    const exportButton = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+    exportButton.text = '$(export) Export EcoCode Report';
+    exportButton.tooltip = 'Export a formatted EcoCode energy report';
+    exportButton.command = 'ecocode-profiler.exportReport';
+    exportButton.show();
+    context.subscriptions.push(exportButton);
+
     storedReports = context.workspaceState.get<Record<string, StoredReport>>(STORAGE_KEY, {});
     const latest = Object.values(storedReports).sort((a, b) => b.updatedAt - a.updatedAt)[0];
     summaryProvider.setReport(latest);
@@ -171,20 +178,48 @@ export async function activate(context: vscode.ExtensionContext) {
             return;
         }
         const destination = await vscode.window.showSaveDialog({
-            saveLabel: 'Export EcoCode Report',
-            defaultUri: vscode.Uri.file(`${report.filePath}.ecocode-report.json`),
-            filters: { JSON: ['json'] },
+            saveLabel: 'Export Formatted EcoCode Report',
+            defaultUri: vscode.Uri.file(path.join(path.dirname(report.filePath), `${path.parse(report.filePath).name}.ecocode-report.html`)),
+            filters: { 'HTML report': ['html'] },
         });
         if (!destination) return;
-        const payload = {
-            file: report.filePath,
-            generated_at: new Date(report.updatedAt).toISOString(),
-            profile: report.report,
-            suggestions: report.suggestions,
-        };
-        await vscode.workspace.fs.writeFile(destination, Buffer.from(JSON.stringify(payload, null, 2) + '\n', 'utf8'));
-        vscode.window.showInformationMessage(`EcoCode report exported to ${destination.fsPath}`);
+        await vscode.workspace.fs.writeFile(destination, Buffer.from(renderHtmlReport(report), 'utf8'));
+        vscode.window.showInformationMessage(`Formatted EcoCode report exported to ${destination.fsPath}`);
     }));
+}
+
+function renderHtmlReport(stored: StoredReport): string {
+    const metadata = stored.report.metadata || {};
+    const functions = Object.entries(stored.report.functions || {})
+        .filter(([name]) => !name.startsWith('<'))
+        .sort((a, b) => Number(b[1].total_energy_j || 0) - Number(a[1].total_energy_j || 0));
+    const totalEnergy = Number(metadata.total_estimated_energy_j || 0);
+    const totalCarbon = functions.reduce((sum, [, stats]) => sum + Number(stats.carbon_gco2e || 0), 0);
+    const escape = (value: unknown) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    const format = (value: unknown, digits = 4) => Number(value || 0).toFixed(digits);
+    const chartFunctions = functions.slice(0, 8);
+    const maxEnergy = Math.max(0, ...chartFunctions.map(([, stats]) => Number(stats.total_energy_j || 0)));
+    const maxTime = Math.max(0, ...chartFunctions.map(([, stats]) => Number(stats.total_time_s || 0)));
+    const chartRows = (key: 'total_energy_j' | 'total_time_s', maximum: number, suffix: string, digits: number) => chartFunctions.map(([name, stats]) => {
+        const value = Number(stats[key] || 0);
+        const width = maximum > 0 ? Math.max(3, (value / maximum) * 100) : 0;
+        return `<div class="chart-row"><span title="${escape(name)}">${escape(name)}</span><div class="bar-track"><div class="bar" style="width:${width}%"></div></div><strong>${format(value, digits)} ${suffix}</strong></div>`;
+    }).join('') || '<p class="empty">No function data is available for charts.</p>';
+    const functionRows = functions.map(([name, stats]) => `
+        <tr><td><strong>${escape(name)}</strong></td><td>${format(stats.calls, 0)}</td><td>${format(stats.total_time_s, 6)} s</td><td>${format(stats.total_energy_j)} J</td><td>${format(stats.carbon_gco2e, 8)} gCO₂e</td></tr>`).join('') || '<tr><td colspan="5" class="empty">No profiled functions were recorded.</td></tr>';
+    const suggestionRows = stored.suggestions.map(suggestion => `
+        <article class="suggestion"><div><span class="badge">${escape(suggestion.estimated_savings)}</span><h3>${escape(suggestion.pattern)}</h3><p>${escape(suggestion.message)}</p><small>Line ${escape(suggestion.line)} · ${escape(suggestion.source)}</small></div><pre><code>${escape(suggestion.suggested_code || 'Review this refactoring in context before applying it.')}</code></pre></article>`).join('') || '<p class="empty">No energy-efficiency suggestions were found for the profiled functions.</p>';
+    const method = metadata.energy_estimation?.method === 'rapl_measurement' ? 'Measured with Intel RAPL' : metadata.energy_estimation?.method === 'intel_energy_model' ? 'Intel energy model estimate' : 'TDP software estimate';
+    return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>EcoCode Energy Report</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f7f5;color:#18322b;font:15px/1.55 Inter,Segoe UI,Arial,sans-serif}.wrap{max-width:1050px;margin:auto;padding:42px 24px 64px}.hero{background:linear-gradient(125deg,#073b32,#0c6b55);color:#fff;border-radius:20px;padding:36px 40px;box-shadow:0 18px 40px #173d3328}.hero h1{font-size:32px;margin:0 0 6px}.hero p{margin:0;color:#d1eee4}.meta{margin-top:26px;font-size:13px;color:#dcefe9}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:24px 0}.card,.panel{background:#fff;border:1px solid #dce9e3;border-radius:16px;box-shadow:0 4px 14px #173d330b}.card{padding:20px}.card span{display:block;color:#5a766c;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}.card strong{display:block;font-size:25px;margin-top:5px;color:#0a4e40}.panel{padding:25px;margin-top:20px}.panel h2{margin:0 0 16px;font-size:20px;color:#0a4e40}.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}.chart h3{font-size:14px;margin:0 0 13px;color:#547268}.chart-row{display:grid;grid-template-columns:minmax(70px,120px) 1fr auto;gap:9px;align-items:center;margin:9px 0;font-size:12px}.chart-row>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bar-track{height:12px;background:#e7f0ec;border-radius:99px;overflow:hidden}.bar{height:100%;background:linear-gradient(90deg,#12a879,#0c6b55);border-radius:99px}.chart-row strong{font-size:11px;color:#406257}table{width:100%;border-collapse:collapse}th{text-align:left;color:#547268;font-size:12px;text-transform:uppercase;letter-spacing:.06em}th,td{padding:12px 10px;border-bottom:1px solid #e5efeb}.suggestion{border:1px solid #d9e8e2;border-left:5px solid #f2b93d;border-radius:10px;padding:16px 18px;margin:12px 0;display:grid;grid-template-columns:1fr minmax(250px,.9fr);gap:18px}.suggestion h3{margin:0 0 4px;text-transform:capitalize}.suggestion p{margin:6px 0}.badge{float:right;background:#fff3cf;color:#765309;border-radius:999px;padding:3px 9px;font-size:12px;font-weight:700}pre{margin:0;background:#102921;color:#e7f6ef;border-radius:9px;padding:13px;white-space:pre-wrap;overflow-wrap:anywhere}.empty{color:#6d8179;text-align:center;padding:18px}@media(max-width:700px){.grid,.chart-grid{grid-template-columns:1fr}.suggestion{grid-template-columns:1fr}.hero{padding:28px 24px}}
+</style></head><body><main class="wrap"><section class="hero"><h1>🌍 EcoCode Energy Report</h1><p>Energy and carbon profile for <strong>${escape(path.basename(stored.filePath))}</strong></p><div class="meta">Generated ${escape(new Date(stored.updatedAt).toLocaleString())} · ${escape(method)}</div></section>
+<section class="grid"><div class="card"><span>Total energy</span><strong>${format(totalEnergy)} J</strong></div><div class="card"><span>Estimated carbon</span><strong>${format(totalCarbon, 8)} gCO₂e</strong></div><div class="card"><span>Execution time</span><strong>${format(metadata.total_run_time_s, 6)} s</strong></div></section>
+<section class="panel"><h2>Energy charts</h2><div class="chart-grid"><div class="chart"><h3>Energy by function (top 8)</h3>${chartRows('total_energy_j', maxEnergy, 'J', 4)}</div><div class="chart"><h3>Runtime by function (top 8)</h3>${chartRows('total_time_s', maxTime, 's', 6)}</div></div></section>
+<section class="panel"><h2>Function profile</h2><table><thead><tr><th>Function</th><th>Calls</th><th>Time</th><th>Energy</th><th>Carbon</th></tr></thead><tbody>${functionRows}</tbody></table></section>
+<section class="panel"><h2>Energy-efficiency suggestions</h2>${suggestionRows}</section>
+</main></body></html>`;
 }
 
 function runProfiler(context: vscode.ExtensionContext, filePath: string, carbonFactor: number): Promise<ProfileReport | null> {

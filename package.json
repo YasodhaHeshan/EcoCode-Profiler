@@ -10,6 +10,8 @@
     "Other"
   ],
   "activationEvents": [
+    "onStartupFinished",
+    "onLanguage:python",
     "onCommand:ecocode-profiler.profileCurrentFile",
     "onCommand:ecocode-profiler.exportReport"
   ],
@@ -30,6 +32,15 @@
         {
           "id": "ecocode.summary",
           "name": "EcoCode Summary"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "ecocode-profiler.exportReport",
+          "when": "view == ecocode.summary",
+          "group": "navigation@1"
         }
       ]
     },

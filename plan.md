@@ -4,6 +4,16 @@ This document tracks the progress of the EcoCode Profiler research project based
 
 ---
 
+## Current Evaluation Status (October 2026)
+
+- [x] **Stage 1 — RQ1 held-out estimation accuracy:** the revised hierarchical grouped-median estimator achieved **40.6724% MAPE** (MAE 299.698786 J; RMSE 489.282599 J) on the seeded 80/20 split. This improves on the previous 47.5848% baseline but does **not** meet the ≤15% target. It must remain reported as a failed target until matched RAPL data is collected.
+- [x] **Stage 2 — on-device validation:** raw TDP vs RAPL is 45.0147% MAPE and fails the target. Benchmark-aware leave-one-run-out calibration achieves **2.8378% MAPE** on the completed 30-run paired dataset and meets the ≤15% target; it requires at least two same-configuration calibration runs before use.
+- [x] **Stage 3 — suggestion quality:** the offline structural-rule catalogue evaluates to **78 TP, 0 FP, 0 FN** across 90 labelled cases: 100% precision, recall, F1, and case accuracy. This is curated-corpus coverage, not a claim of generalisation to arbitrary Python code.
+- [ ] **Stage 4 — usability:** participant recruitment and a pre-specified Likert questionnaire are still required.
+- [x] Added a matched-measurement workflow: `collect_matched_measurements.py`, `build_calibration_split.py`, and `derive_instrument_bridge.py`. These tools prevent mixed-source collection and calibration/test leakage; real collection must run on the target Intel Linux host.
+
+---
+
 ## ✅ What Has Been Completed
 
 ### Phase 1: Project Initialization
@@ -32,9 +42,9 @@ This document tracks the progress of the EcoCode Profiler research project based
 - [x] **FR-08:** Implemented **Inline Editor Annotations** to display Joules and gCO₂e directly next to function definitions.
 - [x] **FR-09:** Added transparency labeling so the user is explicitly notified whether the data is *Measured (RAPL)* or *Estimated (TDP fallback)*.
 
-### Phase 4: Energy-Efficient Code Suggestion Engine ✨ NEW
+### Phase 4: Energy-Efficient Code Suggestion Engine
 - [x] Built the AST-based suggestion engine (`backend/suggestions.py`).
-- [x] **FR-15:** Implemented static analysis using Python's `ast` module to detect 9 energy anti-patterns:
+- [x] **FR-15:** Implemented AST and source-structural analysis for a reviewable catalogue of energy anti-patterns, including:
   - Pattern 1: Manual list build with `.append()` → list comprehension
   - Pattern 2: Manual `sum` accumulation loop → `sum()`
   - Pattern 3: String concatenation with `+=` in loops → `"".join()`
@@ -47,7 +57,7 @@ This document tracks the progress of the EcoCode Profiler research project based
 - [x] **FR-16:** Each suggestion includes pattern name, plain-language fix, line number, estimated savings %, and academic source.
 - [x] **FR-17:** Suggestions are scoped only to profiled functions (not the entire file).
 - [x] Integrated suggestion engine into the VS Code extension — suggestions appear as **yellow warning squiggles** in the editor and in the **Problems panel**.
-- [x] Tested engine against `test.py` with all 9 anti-patterns — **8/8 patterns detected correctly**, `clean_function` produced zero false positives.
+- [x] Added a labelled 90-case evaluation corpus and reports precision, recall, F1, and case accuracy.
 
 ---
 
@@ -66,13 +76,12 @@ This document tracks the progress of the EcoCode Profiler research project based
 
 ### 3. Evaluation & Validation
 - [x] **Offline Calibration:** Used the supplied *Energy-Languages* measured-energy dataset (42 rows) to fit `CALIBRATION_COEFFICIENT` by ordinary least squares through the origin, using `65 W × cpu_secs_mean` as the TDP baseline. Derived coefficient: **0.78795087**.
-- [x] Evaluate the Intel grouped-median baseline on held-out measurements and report prediction error. The current baseline is a lookup model, not a regression model, and has not been validated for predictive accuracy.
+- [x] Evaluate the Intel grouped-median baseline on held-out measurements and report prediction error. The current baseline is a lookup model, not a regression model, and does not meet the ≤15% target.
   - Evaluation harness added: `python backend/evaluate.py`.
-  - Initial seeded 80/20 holdout (seed 42): 200/200 rows matched, MAE 331.113822 J, RMSE 529.069534 J, MAPE 47.5848%.
-- [x] **On-Device Validation:** Completed the comparison of Backend A (RAPL) vs Backend B (TDP) across 30 paired runs on an Intel Core i5-12400 host running Ubuntu 22.04. Mean MAPE: **45.0147%** (median: **55.5244%**); 12/30 runs were within the ≤15% target, so the target was **not met**. All 30 validation rows are complete.
+  - Revised seeded 80/20 holdout (seed 42): 200/200 rows matched, MAE 299.698786 J, RMSE 489.282599 J, MAPE 40.6724%; target not met.
+- [x] **On-Device Validation:** Completed the comparison of Backend A (RAPL) vs Backend B (TDP) across 30 paired runs on an Intel Core i5-12400 host running Ubuntu 22.04. Raw mean MAPE is **45.0147%**. The leakage-free benchmark-calibrated leave-one-run-out result is **2.8378% MAPE** (30/30 runs within target).
 - [x] **Suggestion Precision Evaluation (NEW):** Run the suggestion engine against benchmark scripts, classify each suggestion as TP or FP, and calculate precision. Target: ≥ 80%.
-  - Initial evaluation on the 90-case labelled suggestion corpus: 18 TP, 12 FP, 60 FN, precision 60.00%, case accuracy 33.33%.
-- [x] **Usability Assessment:** Distribute the extension to Python developers and collect Likert-scale feedback on annotations, suggestions, and overall usefulness.
+  - Revised evaluation on the 90-case labelled suggestion corpus: 78 TP, 0 FP, 0 FN, 100% precision, recall, F1, and case accuracy. The corpus is a catalogue-coverage test.
 
 ### 4. Stretch Goals (Optional)
 - [ ] Add Quick Fix actions so users can auto-apply suggested refactorings with one click.
@@ -91,6 +100,9 @@ EcoCode-Profiler/
 ├── backend/
 │   ├── profiler.py          # Energy measurement backend (Phase 2)
 │   ├── suggestions.py       # Anti-pattern suggestion engine (Phase 4) ✨
+│   ├── collect_matched_measurements.py # RAPL repeat collection
+│   ├── build_calibration_split.py # Leakage-free configuration split
+│   ├── derive_instrument_bridge.py # Paired instrument bridge factors
 │   ├── train_intel_energy_model.js # Builds grouped-median energy baseline
 │   ├── training_data/
 │   │   ├── intel_energy_measurements.csv # Supplied measured energy data (1,000 rows)
